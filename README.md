@@ -262,7 +262,7 @@ The `docs/` folder is a complete V1 product-design specification written before 
 
 - [x] Character art — Schwarnhild spritesheets + custom-character compositor (procedural fallback kept)
 - [x] Environment furniture — Molten Maps sci-fi 3D models (consoles, monitors, briefing screen, cafeteria…)
-- [ ] Full environment rebuild on the kit's wall/floor tile system (current shell is still CSG)
+- [x] Full kit shell — walls (solid + glass window bays), railing partitions, zone-tinted metal floors
 - [ ] Replay Theater — scrub & re-enact any past mission from the journal
 - [ ] Meeting-room choreography for multi-agent collaboration
 - [ ] More zones (Research Lab, Dev Studio, Dormitory, Archive Library…)

@@ -4,10 +4,10 @@ extends SceneTree
 ##   godot --headless --path godot --script res://scripts/probe.gd
 
 const MODELS := [
-	"Wall_Grey", "Wall_Glass_Clear", "Chair_1", "Command_Console",
-	"Cafeteria_Table", "Meeting_Table", "Briefing_Screen_Blue",
-	"Large_Monitor_Blue", "Plant_1", "Floor_Lamp", "Orrery",
-	"Floor_Tile_Carpet_Blue", "End_Table", "Lava_Lamp", "Ceiling_Light",
+	"Wall_Grey", "Wall_Glass_Clear", "Wall_Display_Blue", "Wall_Light_White",
+	"Wall_With_Door_Grey", "Wall_Pipe", "Railing_Flat",
+	"Floor_Tile_Carpet_Blue", "Floor_Tile_Metal", "Floor_Mid_Path",
+	"Corridor_Boundary_4x4", "Deck_Height_Metal",
 ]
 
 func _init() -> void:

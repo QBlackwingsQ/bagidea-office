@@ -81,6 +81,9 @@ func _kit_available() -> bool:
 	return FileAccess.file_exists(ProjectSettings.globalize_path(SCIFI_DIR + "Chair_1.glb"))
 
 func _kit(model: String, pos: Vector3, rot_y := 0.0, s := 1.0) -> Node3D:
+	return _kit_scaled(model, pos, rot_y, Vector3.ONE * s)
+
+func _kit_scaled(model: String, pos: Vector3, rot_y: float, s: Vector3) -> Node3D:
 	if not _glb_cache.has(model):
 		var doc := GLTFDocument.new()
 		var state := GLTFState.new()
@@ -93,8 +96,84 @@ func _kit(model: String, pos: Vector3, rot_y := 0.0, s := 1.0) -> Node3D:
 	add_child(inst)
 	inst.position = pos
 	inst.rotation_degrees = Vector3(0, rot_y, 0)
-	inst.scale = Vector3.ONE * s
+	inst.scale = s
 	return inst
+
+func _no_shadow(node: Node) -> void:
+	if node is GeometryInstance3D:
+		node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in node.get_children():
+		_no_shadow(c)
+
+var _tint_mat_cache := {}
+
+## Multiplies a kit model's materials by a color (zone-keying plain floors).
+func _tint_meshes(node: Node, tint: Color) -> void:
+	if node is MeshInstance3D:
+		var mi: MeshInstance3D = node
+		if mi.mesh:
+			for i in mi.mesh.get_surface_count():
+				var src := mi.get_active_material(i)
+				if src is BaseMaterial3D:
+					var key := str(src.get_instance_id()) + tint.to_html()
+					if not _tint_mat_cache.has(key):
+						var dup: BaseMaterial3D = src.duplicate()
+						dup.albedo_color = tint
+						_tint_mat_cache[key] = dup
+					mi.set_surface_override_material(i, _tint_mat_cache[key])
+	for c in node.get_children():
+		_tint_meshes(c, tint)
+
+## Kit floor: tile a zone with nx × nz pieces stretched to fit exactly.
+func _kit_floor(model: String, center: Vector3, w: float, d: float, nx: int, nz: int,
+		tint := Color.WHITE) -> void:
+	for ix in nx:
+		for iz in nz:
+			var px := center.x + ((ix + 0.5) / nx - 0.5) * w
+			var pz := center.z + ((iz + 0.5) / nz - 0.5) * d
+			var tile := _kit_scaled(model, Vector3(px, 0, pz), 0.0,
+				Vector3(w / nx / 4.0, 1.0, d / nz / 4.0))
+			if tile and tint != Color.WHITE:
+				_tint_meshes(tile, tint)
+
+## Kit shell: perimeter walls (solid + full-glass windows), railing
+## partitions on the original segment plan, zone carpet floors.
+func _kit_architecture() -> void:
+	var ws := 0.875  # 4 m kit walls → 3.5 m
+
+	# North wall: solid / glass / solid+display / glass / solid (5 × 4.12 m)
+	var north := ["Wall_Grey", "Wall_Glass_Clear", "Wall_Grey", "Wall_Glass_Clear", "Wall_Grey"]
+	for i in 5:
+		var cx := -10.3 + 4.12 * (i + 0.5)
+		var seg := _kit_scaled(north[i], Vector3(cx, 0, -10.15), 0.0, Vector3(1.03, ws, ws))
+		if seg and north[i].begins_with("Wall_Glass"):
+			_no_shadow(seg)  # sun shines through the window panels
+	_kit_scaled("Wall_Display_Blue", Vector3(0, 0.35, -9.72), 0.0, Vector3.ONE * ws)
+
+	# West & east walls (4 × 4.075 m, rotated)
+	for i in 4:
+		var cz := -10.15 + 4.075 * (i + 0.5)
+		_kit_scaled("Wall_Grey", Vector3(-10.15, 0, cz), 90.0, Vector3(1.019, ws, ws))
+		_kit_scaled("Wall_Grey", Vector3(10.15, 0, cz), -90.0, Vector3(1.019, ws, ws))
+
+	# Inner partitions: railings stretched onto the original segment plan
+	# (door gaps preserved). Railing is 3.92 m long, 1.13 m tall at scale 1.
+	for s in [[-7.4, 5.2], [-1.5, 3.4], [3.5, 3.4], [8.4, 3.2]]:               # along z=-3
+		_kit_scaled("Railing_Flat", Vector3(s[0], 0, -3), 0.0, Vector3(s[1] / 3.92, 1.06, 1.0))
+	for s in [[-8.65, 2.7], [-4.35, 2.7]]:                                     # exec|ops x=-2
+		_kit_scaled("Railing_Flat", Vector3(-2, 0, s[0]), 90.0, Vector3(s[1] / 3.92, 1.06, 1.0))
+	for s in [[-2.15, 1.7], [1.15, 1.7]]:                                      # sec|lobby x=-6
+		_kit_scaled("Railing_Flat", Vector3(-6, 0, s[0]), 90.0, Vector3(s[1] / 3.92, 1.06, 1.0))
+	_kit_scaled("Railing_Flat", Vector3(-8, 0, 2), 0.0, Vector3(4.3 / 3.92, 1.06, 1.0))  # sec south
+	for s in [[-1.4, 3.2], [3.9, 4.2]]:                                        # lobby|cafe x=4
+		_kit_scaled("Railing_Flat", Vector3(4, 0, s[0]), 90.0, Vector3(s[1] / 3.92, 1.06, 1.0))
+
+	# Zone floors: calm plain metal everywhere, zone-keyed by a subtle tint.
+	_kit_floor("Floor_Metal_Square", Vector3(-6, 0, -6.5), 7.6, 6.6, 3, 3, Color(1.0, 0.88, 0.7))   # exec warm
+	_kit_floor("Floor_Metal_Square", Vector3(4, 0, -6.5), 11.6, 6.6, 5, 3, Color(0.74, 0.84, 1.0))  # ops cool
+	_kit_floor("Floor_Metal_Square", Vector3(-1, 0, 1.5), 9.6, 8.6, 4, 3)                           # lobby neutral
+	_kit_floor("Floor_Metal_Square", Vector3(7, 0, 1.5), 5.6, 8.6, 3, 4, Color(1.0, 0.76, 0.66))    # cafe warm red
+	_kit_floor("Floor_Metal_Square", Vector3(-8, 0, -0.5), 3.6, 4.6, 2, 2, Color(0.78, 1.0, 0.8))   # sec green
 
 func _ready() -> void:
 	_build_graph()
@@ -283,42 +362,44 @@ func _build_geometry() -> void:
 	planks.set_shader_parameter("col_a", Vector3(0.31, 0.235, 0.165))
 	planks.set_shader_parameter("col_b", Vector3(0.27, 0.2, 0.14))
 
-	# ---- Floor + zone rugs
-	_box(Vector3(0, -0.1, -2), Vector3(20.6, 0.2, 16.6), planks)
-	_rug(Vector3(-6, 0, -6.5), Vector3(6.6, 0, 5.6), Color(0.3, 0.22, 0.12))    # exec gold
-	_rug(Vector3(4, 0, -6.5), Vector3(10.6, 0, 5.6), Color(0.14, 0.18, 0.28))   # ops blue
-	_rug(Vector3(7, 0, 1.5), Vector3(4.6, 0, 7.6), Color(0.3, 0.18, 0.1))       # cafe warm
-	_rug(Vector3(-8, 0, -0.5), Vector3(2.8, 0, 3.8), Color(0.26, 0.18, 0.08))   # sec amber
+	var kit := _kit_available()
 
-	# ---- Perimeter: north wall with 4 framed windows (y 1.0..2.8)
-	_box(Vector3(0, 0.5, -10.15), Vector3(20.6, 1.0, 0.3), wall)
-	_box(Vector3(0, 3.15, -10.15), Vector3(20.6, 0.7, 0.3), wall)
-	for p in [[-9.275, 2.05], [-4.75, 2.0], [0.0, 2.5], [4.75, 2.0], [9.275, 2.05]]:
-		_box(Vector3(p[0], 1.9, -10.15), Vector3(p[1], 1.8, 0.3), wall)
-	for wx in [-7.0, -2.5, 2.5, 7.0]:
-		var half := 1.25 if wx in [-7.0, 7.0] else 1.25
-		_box(Vector3(wx, 1.0, -10.02), Vector3(2.5, 0.12, 0.1), dark_wood)   # sill
-		_box(Vector3(wx, 2.8, -10.02), Vector3(2.5, 0.12, 0.1), dark_wood)   # head
-		_box(Vector3(wx - half, 1.9, -10.02), Vector3(0.12, 1.8, 0.1), dark_wood)
-		_box(Vector3(wx + half, 1.9, -10.02), Vector3(0.12, 1.8, 0.1), dark_wood)
-		_box(Vector3(wx, 1.9, -10.06), Vector3(0.06, 1.8, 0.06), dark_wood)  # mullion
-	_box(Vector3(-10.15, 1.75, -2), Vector3(0.3, 3.5, 16.3), wall)
-	_box(Vector3(10.15, 1.75, -2), Vector3(0.3, 3.5, 16.3), wall)
-	# Baseboards (visible interior faces)
-	_box(Vector3(0, 0.09, -9.97), Vector3(20.0, 0.18, 0.05), dark_wood)
-	_box(Vector3(-9.97, 0.09, -2), Vector3(0.05, 0.18, 16.0), dark_wood)
-	_box(Vector3(9.97, 0.09, -2), Vector3(0.05, 0.18, 16.0), dark_wood)
-
-	# ---- Inner glass partitions (camera sees into every room)
-	for s in [[-7.4, 5.2], [-1.5, 3.4], [3.5, 3.4], [8.4, 3.2]]:               # along z=-3
-		_partition(Vector3(s[0], 0, -3), Vector3(s[1], 0, 0.22), glass, wall, cap)
-	for s in [[-8.65, 2.7], [-4.35, 2.7]]:                                     # exec|ops x=-2
-		_partition(Vector3(-2, 0, s[0]), Vector3(0.22, 0, s[1]), glass, wall, cap)
-	for s in [[-2.15, 1.7], [1.15, 1.7]]:                                      # sec|lobby x=-6
-		_partition(Vector3(-6, 0, s[0]), Vector3(0.22, 0, s[1]), glass, wall, cap)
-	_partition(Vector3(-8, 0, 2), Vector3(4.3, 0, 0.22), glass, wall, cap)     # sec south
-	for s in [[-1.4, 3.2], [3.9, 4.2]]:                                        # lobby|cafe x=4
-		_partition(Vector3(4, 0, s[0]), Vector3(0.22, 0, s[1]), glass, wall, cap)
+	# ---- Architecture: kit shell (walls/partitions/floors) or CSG fallback
+	if kit:
+		_box(Vector3(0, -0.1, -2), Vector3(20.6, 0.2, 16.6), _mat(Color(0.12, 0.13, 0.16), 0.5))
+		_kit_architecture()
+	else:
+		_box(Vector3(0, -0.1, -2), Vector3(20.6, 0.2, 16.6), planks)
+		_rug(Vector3(-6, 0, -6.5), Vector3(6.6, 0, 5.6), Color(0.3, 0.22, 0.12))
+		_rug(Vector3(4, 0, -6.5), Vector3(10.6, 0, 5.6), Color(0.14, 0.18, 0.28))
+		_rug(Vector3(7, 0, 1.5), Vector3(4.6, 0, 7.6), Color(0.3, 0.18, 0.1))
+		_rug(Vector3(-8, 0, -0.5), Vector3(2.8, 0, 3.8), Color(0.26, 0.18, 0.08))
+		# North wall with 4 framed windows (y 1.0..2.8)
+		_box(Vector3(0, 0.5, -10.15), Vector3(20.6, 1.0, 0.3), wall)
+		_box(Vector3(0, 3.15, -10.15), Vector3(20.6, 0.7, 0.3), wall)
+		for p in [[-9.275, 2.05], [-4.75, 2.0], [0.0, 2.5], [4.75, 2.0], [9.275, 2.05]]:
+			_box(Vector3(p[0], 1.9, -10.15), Vector3(p[1], 1.8, 0.3), wall)
+		for wx in [-7.0, -2.5, 2.5, 7.0]:
+			_box(Vector3(wx, 1.0, -10.02), Vector3(2.5, 0.12, 0.1), dark_wood)
+			_box(Vector3(wx, 2.8, -10.02), Vector3(2.5, 0.12, 0.1), dark_wood)
+			_box(Vector3(wx - 1.25, 1.9, -10.02), Vector3(0.12, 1.8, 0.1), dark_wood)
+			_box(Vector3(wx + 1.25, 1.9, -10.02), Vector3(0.12, 1.8, 0.1), dark_wood)
+			_box(Vector3(wx, 1.9, -10.06), Vector3(0.06, 1.8, 0.06), dark_wood)
+		_box(Vector3(-10.15, 1.75, -2), Vector3(0.3, 3.5, 16.3), wall)
+		_box(Vector3(10.15, 1.75, -2), Vector3(0.3, 3.5, 16.3), wall)
+		_box(Vector3(0, 0.09, -9.97), Vector3(20.0, 0.18, 0.05), dark_wood)
+		_box(Vector3(-9.97, 0.09, -2), Vector3(0.05, 0.18, 16.0), dark_wood)
+		_box(Vector3(9.97, 0.09, -2), Vector3(0.05, 0.18, 16.0), dark_wood)
+		# Inner glass partitions
+		for s in [[-7.4, 5.2], [-1.5, 3.4], [3.5, 3.4], [8.4, 3.2]]:
+			_partition(Vector3(s[0], 0, -3), Vector3(s[1], 0, 0.22), glass, wall, cap)
+		for s in [[-8.65, 2.7], [-4.35, 2.7]]:
+			_partition(Vector3(-2, 0, s[0]), Vector3(0.22, 0, s[1]), glass, wall, cap)
+		for s in [[-2.15, 1.7], [1.15, 1.7]]:
+			_partition(Vector3(-6, 0, s[0]), Vector3(0.22, 0, s[1]), glass, wall, cap)
+		_partition(Vector3(-8, 0, 2), Vector3(4.3, 0, 0.22), glass, wall, cap)
+		for s in [[-1.4, 3.2], [3.9, 4.2]]:
+			_partition(Vector3(4, 0, s[0]), Vector3(0.22, 0, s[1]), glass, wall, cap)
 
 	# ---- Sky + city skyline + shadows-only ceiling
 	sky_mat = _mat(Color(0.55, 0.75, 1.0), 1.0, Color(0.55, 0.72, 1.0), 1.6)
@@ -340,7 +421,6 @@ func _build_geometry() -> void:
 	_box(Vector3(0, 3.7, -2), Vector3(20.6, 0.2, 16.6), wall, 3)
 
 	# ---- Executive Office
-	var kit := _kit_available()
 	if kit:
 		_kit("Command_Console", Vector3(-6, 0, -8.4), 0.0, 0.5)   # the command station
 		_kit("Orrery", Vector3(-8.6, 0, -4.2), 0.0, 0.35)
@@ -498,9 +578,10 @@ func _build_geometry() -> void:
 	add_child(fog)
 	fog.position = Vector3(0, 1.75, -2)
 
-	for wx in [-7.0, -2.5, 2.5, 7.0]:
+	# God-ray cards anchored to the window slots (kit shell: two big glass bays)
+	for wx in ([-4.12, 4.12] if kit else [-7.0, -2.5, 2.5, 7.0]):
 		var quad := QuadMesh.new()
-		quad.size = Vector2(2.3, 5.0)
+		quad.size = Vector2(3.2 if kit else 2.3, 5.0)
 		var bm := ShaderMaterial.new()
 		bm.shader = BEAM_SHADER
 		bm.set_shader_parameter("strength", 0.3)
