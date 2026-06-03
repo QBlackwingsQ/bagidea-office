@@ -186,7 +186,11 @@ func _process(delta: float) -> void:
 	_t += delta * _bob_speed
 	# Sheet art: feet sit 31 px below cell center; node stands at y 0.86
 	# (0.86 / 0.032 ≈ 27 px) → lift by 4 px so feet land exactly on the floor.
-	offset.y = (sin(_t) * 0.15) if _mode == "procedural" else 4.0
+	if _mode == "procedural":
+		offset.y = sin(_t) * 0.15
+	else:
+		offset.y = 4.0
+		offset.x = 0.0
 
 	match _mode:
 		"npc", "custom":
@@ -196,8 +200,14 @@ func _process(delta: float) -> void:
 				_anim_t = fmod(_anim_t, 1.0)
 				_anim_frame = (_anim_frame + 1) % 4
 			var row := _dir
-			if _walking and _has_walk_rows:
-				row += 4
+			if _walking:
+				if _has_walk_rows:
+					row += 4
+				else:
+					# Idle-only sheets (custom composites): fake the stride
+					# with a step-hop so walking still reads as walking.
+					offset.y = 4.0 + absf(sin(_t * 1.6)) * 2.2
+					offset.x = sin(_t * 0.8) * 1.4
 			frame = row * 4 + _anim_frame
 		"procedural":
 			if _walking:
