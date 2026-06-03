@@ -102,7 +102,8 @@ func _ready() -> void:
 	_label.font_size = 64
 	_label.outline_size = 16
 	_label.pixel_size = 0.004
-	_label.position = Vector3(0, 1.05, 0)
+	# Slightly above the head (head top ≈ node + 0.85 for both art modes).
+	_label.position = Vector3(0, 1.1, 0)
 	_label.modulate = Color(0.75, 0.95, 1.0)
 	add_child(_label)
 
@@ -115,7 +116,9 @@ func _setup_visual() -> void:
 			vframes = 8
 			_mode = "npc"
 			_has_walk_rows = true
-			pixel_size = 0.045           # char ~36 px in a 64 px cell → ~1.6 m
+			# Char body spans rows 10..63 of the 64px cell (54 px tall, feet on
+			# the cell's bottom edge): 0.032 → ~1.7 m tall.
+			pixel_size = 0.032
 			return
 	if npc_index == 0 and CharacterFactory.has_assets():
 		var tex: ImageTexture = CharacterFactory.custom_texture(skin_color, hair_color, suit_color, suit_color.darkened(0.4))
@@ -125,7 +128,7 @@ func _setup_visual() -> void:
 			vframes = 4
 			_mode = "custom"
 			_has_walk_rows = false
-			pixel_size = 0.045
+			pixel_size = 0.032
 			return
 	_build_procedural()
 
@@ -176,8 +179,9 @@ func _process(delta: float) -> void:
 
 	# Idle bob (procedural only — sheet anims carry their own life).
 	_t += delta * _bob_speed
-	# Sheet art: +1 px lifts the baked-in cell margin so feet meet the floor.
-	offset.y = (sin(_t) * 0.15) if _mode == "procedural" else 1.0
+	# Sheet art: feet sit 31 px below cell center; node stands at y 0.86
+	# (0.86 / 0.032 ≈ 27 px) → lift by 4 px so feet land exactly on the floor.
+	offset.y = (sin(_t) * 0.15) if _mode == "procedural" else 4.0
 
 	match _mode:
 		"npc", "custom":
