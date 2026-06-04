@@ -265,7 +265,8 @@ The `docs/` folder is a complete V1 product-design specification written before 
 - [x] Environment furniture — Molten Maps sci-fi 3D models (consoles, monitors, briefing screen, cafeteria…)
 - [x] Full kit shell — walls (solid + glass window bays), railing partitions, zone-tinted metal floors
 - [x] Meeting Room choreography, Server Room, Dormitory (east wing)
-- [ ] Replay Theater — scrub & re-enact any past mission from the journal
+- [x] Replay Theater — `POST /replay` re-enacts a journal slice in-world (sepia grade + marquee), Replay button in the overlay
+- [x] Live meeting whiteboard — agents' real messages appear on the meeting-room minutes board
 - [ ] More zones (Research Lab, Dev Studio, Archive Library…)
 - [ ] Permission policies (always-allow rules, per-agent keycards)
 - [ ] Voice (push-to-talk, wake word)
