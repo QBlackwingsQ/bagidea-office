@@ -56,6 +56,21 @@
   }
   header button:hover { background: rgba(94,200,255,0.15); }
 
+  /* ---------- daylight picker ---------- */
+  #dayMenu {
+    display: none; position: absolute; top: 42px; right: 14px; z-index: 50;
+    background: var(--glass); backdrop-filter: blur(12px);
+    border: 1px solid var(--line); border-radius: 12px; padding: 6px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  }
+  #dayMenu.open { display: block; }
+  #dayMenu .opt {
+    display: flex; gap: 8px; align-items: center; cursor: pointer;
+    padding: 6px 12px; border-radius: 8px; font-size: 12.5px; white-space: nowrap;
+  }
+  #dayMenu .opt:hover { background: rgba(94,200,255,0.12); }
+  #dayMenu .opt.active { color: var(--accent); font-weight: 700; }
+
   /* ---------- agent rail ---------- */
   #rail {
     display: flex; gap: 8px; align-items: center; flex: none;
@@ -182,6 +197,8 @@
   <span id="conn"></span>
   <span id="theater">⏪ REPLAY</span>
   <button id="replayBtn" title="Re-enact the last 15 minutes in the office">⏪ Replay</button>
+  <button id="dayBtn" title="World atmosphere" style="margin-left:6px">🌗</button>
+  <div id="dayMenu"></div>
   <div class="winbtn" id="miniBtn" title="Mini window" style="margin-left:6px">◱</div>
   <div class="winbtn hide" id="hideBtn" title="Hide (chat head brings it back)">—</div>
 </header>
@@ -366,8 +383,40 @@
     if (el) el.remove();
   }
 
+  // ---- daylight picker ------------------------------------------------------
+  const DAY_OPTS = [
+    ["auto", "🔄 AUTO — ตามเวลาเครื่อง"],
+    [7.5, "🌅 เช้าตรู่"],
+    [13, "☀️ กลางวัน"],
+    [17.3, "🌇 เย็น"],
+    [22, "🌙 กลางคืน"],
+  ];
+  let dayMode = "auto";
+  function renderDayMenu() {
+    const m = document.getElementById("dayMenu");
+    m.innerHTML = "";
+    for (const [val, label] of DAY_OPTS) {
+      const o = document.createElement("div");
+      o.className = "opt" + (String(val) === String(dayMode) ? " active" : "");
+      o.textContent = label;
+      o.onclick = () => {
+        m.classList.remove("open");
+        fetch("/ui/daylight", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ hour: val }) });
+      };
+      m.appendChild(o);
+    }
+  }
+  document.getElementById("dayBtn").onclick = (e) => {
+    e.stopPropagation();
+    renderDayMenu();
+    document.getElementById("dayMenu").classList.toggle("open");
+  };
+  document.addEventListener("click", () => document.getElementById("dayMenu").classList.remove("open"));
+
   // ---- event routing --------------------------------------------------------
   function route(ev) {
+    if (ev.type === "ui.daylight") { dayMode = ev.hour; return; }
     if (String(ev.type).startsWith("ui.")) return;  // debug beacons aren't agents
     const key = ev.task || ev.agent;
     if (ev.type === "theater.started") {

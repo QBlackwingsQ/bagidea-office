@@ -221,6 +221,21 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ replaying: ok }));
     });
 
+  } else if (req.method === "POST" && req.url === "/ui/daylight") {
+    // Manual atmosphere override for the world ("auto" follows the clock).
+    // Journaled, so the choice survives renderer restarts via replay.
+    readBody(req, (body) => {
+      try {
+        const { hour = "auto" } = JSON.parse(body || "{}");
+        broadcast({ type: "ui.daylight", hour });
+        res.writeHead(200);
+        res.end("ok");
+      } catch {
+        res.writeHead(400);
+        res.end("bad json");
+      }
+    });
+
   } else if (req.method === "POST" && req.url === "/event") {
     readBody(req, (body) => {
       try {

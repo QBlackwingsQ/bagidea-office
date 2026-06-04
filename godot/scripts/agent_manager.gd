@@ -32,6 +32,9 @@ func _set_state(a: Dictionary, state: String) -> void:
 
 func handle(evt: Dictionary) -> void:
 	var type := str(evt.get("type", ""))
+	if type == "ui.daylight":
+		get_node("../").apply_daylight_event(evt)
+		return
 	if type.begins_with("ui."):
 		return  # overlay debug beacons aren't agents
 	# Replay Theater: the daemon re-broadcasts journal slices time-compressed.

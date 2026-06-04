@@ -11,8 +11,8 @@ const DAY_KEYS := [
 	[7.5,  -24.0, 2.1,  Color(1.0, 0.74, 0.5),  Color(0.85, 0.62, 0.45), 1.4],
 	[10.0, -42.0, 3.0,  Color(1.0, 0.93, 0.82), Color(0.55, 0.75, 1.0),  2.0],
 	[15.0, -46.0, 3.0,  Color(1.0, 0.95, 0.85), Color(0.55, 0.75, 1.0),  2.0],
-	[18.0, -26.0, 2.2,  Color(1.0, 0.66, 0.4),  Color(0.9, 0.55, 0.35),  1.5],
-	[19.5, -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.07, 0.09, 0.2),  0.8],
+	[17.0, -26.0, 2.2,  Color(1.0, 0.66, 0.4),  Color(0.9, 0.55, 0.35),  1.5],
+	[18.0, -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.07, 0.09, 0.2),  0.8],
 	[24.0, -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.05, 0.07, 0.16), 0.8],
 ]
 
@@ -50,6 +50,13 @@ func _ready() -> void:
 		var cam: Camera3D = $CameraRig/Camera3D
 		cam.attributes.dof_blur_far_enabled = false
 		cam.attributes.dof_blur_near_enabled = false
+
+## Manual atmosphere from the overlay: {"hour": 17.5} pins the clock for
+## debugging/beauty shots; {"hour": "auto"} hands it back to real time.
+func apply_daylight_event(evt: Dictionary) -> void:
+	var h: Variant = evt.get("hour", "auto")
+	_hour_override = float(h) if (h is float or h is int) else -1.0
+	_apply_daylight()
 
 func _process(delta: float) -> void:
 	_day_timer -= delta
