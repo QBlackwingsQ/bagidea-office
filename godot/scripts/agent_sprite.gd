@@ -14,6 +14,9 @@ extends Sprite3D
 @export var npc_index := -1
 @export var agent_name := "agent"
 @export var agent_role := "Staff"
+## "ceo" (the owner), "lead" (the Director) or "staff" — drives plate rank
+## dressing on the HUD.
+@export var rank := "staff"
 
 const CharacterFactory := preload("res://scripts/character_factory.gd")
 const AuraFactory := preload("res://scripts/aura_factory.gd")

@@ -388,6 +388,10 @@ func _make_char(id: String) -> Sprite3D:
 		s.agent_role = "Director"
 	elif id == "ceo":
 		s.agent_role = "Chairman"
+	if id == "main":
+		s.rank = "lead"
+	elif id == "ceo":
+		s.rank = "ceo"
 	else:
 		s.npc_index = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12][h % 10]
 		s.agent_role = ["Researcher", "Engineer", "Designer", "Analyst",

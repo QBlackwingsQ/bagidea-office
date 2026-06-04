@@ -27,13 +27,66 @@ func _ready() -> void:
 
 # ---------------------------------------------------------------- nameplates
 
+# Tiny baked rank icons (pixel art — the 3D HUD font has no color emoji).
+const CROWN_ART: Array[String] = [
+	"y...y...y",
+	"y..yyy..y",
+	"yy.yyy.yy",
+	"yyyyyyyyy",
+	".yyyyyyy.",
+]
+const STAR_ART: Array[String] = [
+	"....c....",
+	"...ccc...",
+	"ccccccccc",
+	".ccccccc.",
+	"..ccccc..",
+	".ccc.ccc.",
+	".c.....c.",
+]
+static var _crown_tex: ImageTexture
+static var _star_tex: ImageTexture
+
+static func _bake_icon(art: Array[String], col: Color) -> ImageTexture:
+	var w: int = art[0].length()
+	var h: int = art.size()
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		for x in w:
+			if art[y][x] != ".":
+				img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
+
+## Rank dressing: the CEO (the owner) wears gold + a crown; the Director
+## (main) wears bright blue + a lead star — both readable at a glance,
+## mirroring the chat rail.
 func register(agent: Node3D, display_name: String, role: String,
 		portrait: Texture2D, accent: Color) -> void:
+	var rank := str(agent.get("rank")) if agent.get("rank") != null else "staff"
+	var bg := Color(0.04, 0.06, 0.11, 0.82)
+	var border := Color(accent.r, accent.g, accent.b, 0.85)
+	var name_col := Color(0.96, 0.98, 1.0)
+	var icon_tex: ImageTexture = null
+	if rank == "ceo":
+		bg = Color(0.2, 0.13, 0.02, 0.88)
+		border = Color(1.0, 0.8, 0.35, 0.95)
+		name_col = Color(1.0, 0.92, 0.66)
+		if _crown_tex == null:
+			_crown_tex = _bake_icon(CROWN_ART, Color(1.0, 0.8, 0.3))
+		icon_tex = _crown_tex
+	elif rank == "lead":
+		bg = Color(0.02, 0.1, 0.17, 0.88)
+		border = Color(0.4, 0.82, 1.0, 0.95)
+		name_col = Color(0.78, 0.95, 1.0)
+		if _star_tex == null:
+			_star_tex = _bake_icon(STAR_ART, Color(0.45, 0.85, 1.0))
+		icon_tex = _star_tex
+
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.06, 0.11, 0.82)
+	style.bg_color = bg
 	style.set_corner_radius_all(8)
-	style.set_border_width_all(1)
-	style.border_color = Color(accent.r, accent.g, accent.b, 0.85)
+	style.set_border_width_all(2 if icon_tex else 1)
+	style.border_color = border
 	style.content_margin_left = 7
 	style.content_margin_right = 9
 	style.content_margin_top = 3
@@ -72,12 +125,26 @@ func register(agent: Node3D, display_name: String, role: String,
 	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hb.add_child(vb)
 
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 4)
+	name_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(name_row)
+	if icon_tex:
+		var badge := TextureRect.new()
+		badge.texture = icon_tex
+		badge.custom_minimum_size = Vector2(icon_tex.get_width() * 2, icon_tex.get_height() * 2)
+		badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		badge.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		name_row.add_child(badge)
 	var nm := Label.new()
 	nm.text = display_name
 	nm.add_theme_font_size_override("font_size", 13)
-	nm.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0))
+	nm.add_theme_color_override("font_color", name_col)
 	nm.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vb.add_child(nm)
+	name_row.add_child(nm)
 
 	var sub := Label.new()
 	sub.text = role
