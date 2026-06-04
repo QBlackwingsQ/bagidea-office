@@ -116,6 +116,9 @@ func set_status(agent: Node3D, text: String) -> void:
 	if not _plates.has(agent):
 		return
 	var p: Dictionary = _plates[agent]
+	# Containers grow with long text but never shrink back on their own —
+	# snap the plate back to its minimum size after every change.
+	p.root.reset_size.call_deferred()
 	if text == "":
 		p.sub.text = p.role
 		p.sub.add_theme_color_override("font_color", Color(0.62, 0.68, 0.78))
@@ -141,6 +144,7 @@ func set_state(agent: Node3D, state: String) -> void:
 	p.pill_label.add_theme_color_override("font_color", c)
 	p.pill_style.bg_color = Color(c.r, c.g, c.b, 0.16)
 	p.pill_style.border_color = Color(c.r, c.g, c.b, 0.7)
+	p.root.reset_size.call_deferred()
 
 func unregister(agent: Node3D) -> void:
 	if _plates.has(agent):
