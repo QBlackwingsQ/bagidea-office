@@ -12,12 +12,31 @@
     --dim: #8294ab;
   }
   * { box-sizing: border-box; margin: 0; }
+  html { background: #0a111d; }
   body {
     font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
     background: radial-gradient(1200px 700px at 70% -10%, #14233c 0%, #0a111d 60%, #070b13 100%);
     color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+    border: 1px solid rgba(110, 185, 255, 0.35); border-radius: 18px;
   }
   .px { image-rendering: pixelated; background-repeat: no-repeat; }
+
+  /* themed scrollbars */
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(110, 180, 255, 0.22); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(110, 180, 255, 0.45); }
+  ::-webkit-scrollbar-corner { background: transparent; }
+
+  /* round window-control buttons (custom chrome) */
+  .winbtn {
+    width: 26px; height: 26px; border-radius: 50%; flex: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+    color: var(--text); background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .winbtn:hover { background: rgba(94,200,255,0.25); border-color: var(--accent); }
+  .winbtn.hide:hover { background: rgba(255,84,72,0.3); border-color: #ff5448; }
 
   /* ---------- header ---------- */
   header {
@@ -149,11 +168,14 @@
   }
 </style>
 
-<header>
-  <span class="logo">◤ BAGIDEA</span> OFFICE
+<header id="titlebar" style="cursor:grab">
+  <img src="/brand/logo_ico_cute.png" width="20" height="20" draggable="false" style="flex:none">
+  <span class="logo">BAGIDEA</span> OFFICE
   <span id="conn"></span>
   <span id="theater">⏪ REPLAY</span>
   <button id="replayBtn" title="Re-enact the last 15 minutes in the office">⏪ Replay</button>
+  <div class="winbtn" id="miniBtn" title="Mini window" style="margin-left:6px">◱</div>
+  <div class="winbtn hide" id="hideBtn" title="Hide (chat head brings it back)">—</div>
 </header>
 
 <div id="rail"></div>
@@ -180,6 +202,11 @@
 </footer>
 
 <script>
+  // dev error beacon → daemon log
+  window.onerror = (m, s, l, c) =>
+    fetch("/event", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "ui.error", agent: "overlay", text: `${m} @${l}:${c}` }) });
+
   // ---- portable identity (must match agent_manager.gd) -------------------
   function phash(id) {
     let h = 0;
@@ -332,6 +359,7 @@
 
   // ---- event routing --------------------------------------------------------
   function route(ev) {
+    if (String(ev.type).startsWith("ui.")) return;  // debug beacons aren't agents
     const key = ev.task || ev.agent;
     if (ev.type === "theater.started") {
       document.getElementById("theater").style.display = "inline";
@@ -417,5 +445,24 @@
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ minutes: 15, speed: 10 }),
     });
+
+  // ---- custom window chrome (only inside the native shell) ----------------
+  // NB: wry injects a global named `ipc` — never shadow it with const/let!
+  const shellPost = window.ipc && window.ipc.postMessage
+    ? (m) => window.ipc.postMessage(m) : null;
+  if (shellPost) {
+    document.getElementById("titlebar").addEventListener("mousedown", (e) => {
+      if (e.button === 0 && !e.target.closest("button") && !e.target.closest(".winbtn"))
+        shellPost("drag-overlay");
+    });
+    document.getElementById("miniBtn").onclick = () => shellPost("mini");
+    document.getElementById("hideBtn").onclick = () => shellPost("hide");
+  } else {
+    // plain browser: the OS window has its own chrome
+    document.getElementById("miniBtn").style.display = "none";
+    document.getElementById("hideBtn").style.display = "none";
+    document.body.style.borderRadius = "0";
+    document.body.style.border = "none";
+  }
 </script>
 </html>

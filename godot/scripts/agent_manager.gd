@@ -25,6 +25,8 @@ func set_connected(connected: bool) -> void:
 
 func handle(evt: Dictionary) -> void:
 	var type := str(evt.get("type", ""))
+	if type.begins_with("ui."):
+		return  # overlay debug beacons aren't agents
 	# Replay Theater: the daemon re-broadcasts journal slices time-compressed.
 	# Characters act them out, but the mission board stays in the present.
 	if type == "theater.started":

@@ -168,11 +168,14 @@ function readBody(req, cb) {
 }
 
 const server = http.createServer((req, res) => {
-  if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  if (req.method === "GET" && (req.url.split("?")[0] === "/" || req.url.split("?")[0] === "/index.html")) {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+    });
     res.end(fs.readFileSync(OVERLAY));
 
-  } else if (req.method === "GET" && /^\/brand\/logo(_box)?\.png$/.test(req.url)) {
+  } else if (req.method === "GET" && /^\/brand\/logo[a-z_]*\.png$/.test(req.url)) {
     const f = path.join(__dirname, "..", "godot", "assets", "brand", req.url.split("/").pop());
     fs.readFile(f, (e, data) => {
       if (e) { res.writeHead(404); res.end(); return; }

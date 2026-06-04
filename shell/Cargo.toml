@@ -2,6 +2,7 @@
 name = "bagidea-office-shell"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [profile.release]
 opt-level = "z"
@@ -10,4 +11,9 @@ strip = true
 
 [dependencies]
 tao = "0.35.3"
-wry = "0.55.1"
+wry = { version = "0.55.1", features = ["devtools"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+windows-sys = { version = "0.59", features = ["Win32_Graphics_Gdi", "Win32_Foundation"] }
+
+[build-dependencies]
+winres = "0.1"
