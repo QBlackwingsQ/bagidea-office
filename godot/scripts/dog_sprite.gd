@@ -40,6 +40,7 @@ var _frame := 0
 var _moving := false
 
 func _ready() -> void:
+	layers = 2  # moving prop — keep it off the static map render
 	var colors := {
 		"o": Color8(28, 20, 14),
 		"B": Color8(158, 106, 62),

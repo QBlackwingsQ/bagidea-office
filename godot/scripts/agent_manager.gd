@@ -18,8 +18,40 @@ var meeting_cycle: Array[String] = ["m_s1", "m_s2", "m_s3", "m_s4"]
 var bed_pool: Array[String] = ["bed1", "bed2", "b3", "b4", "b5", "b6", "b7", "b8"]
 var ceo: Sprite3D
 
+var _pos_req: HTTPRequest
+var _pos_busy := false
+
 func _ready() -> void:
 	_spawn_ceo.call_deferred()
+	# Live positions → daemon → overlay map (1 Hz, fire-and-forget).
+	_pos_req = HTTPRequest.new()
+	add_child(_pos_req)
+	_pos_req.request_completed.connect(func(_a, _b, _c, _d): _pos_busy = false)
+	var t := Timer.new()
+	t.wait_time = 1.0
+	t.autostart = true
+	t.timeout.connect(_stream_positions)
+	add_child(t)
+
+func _stream_positions() -> void:
+	if _pos_busy:
+		return
+	var list := []
+	for id in agents:
+		var a: Dictionary = agents[id]
+		if is_instance_valid(a.node):
+			list.append({"id": id, "x": a.node.position.x, "z": a.node.position.z,
+				"state": a.state})
+	if is_instance_valid(ceo):
+		list.append({"id": "ceo", "x": ceo.position.x, "z": ceo.position.z, "state": "idle"})
+	if list.is_empty():
+		return
+	_pos_busy = true
+	var err := _pos_req.request("http://127.0.0.1:8787/pos",
+		["content-type: application/json"], HTTPClient.METHOD_POST,
+		JSON.stringify({"agents": list}))
+	if err != OK:
+		_pos_busy = false
 
 func set_connected(connected: bool) -> void:
 	world.set_totem(connected)

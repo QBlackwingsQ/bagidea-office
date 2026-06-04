@@ -287,6 +287,14 @@ function readBody(req, cb) {
   req.on("end", () => cb(body));
 }
 
+function readBodyRaw(req, cb) {
+  const chunks = [];
+  req.on("data", (c) => chunks.push(c));
+  req.on("end", () => cb(Buffer.concat(chunks)));
+}
+
+const MAPBG = path.join(__dirname, "map_bg.png");
+
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && (req.url.split("?")[0] === "/" || req.url.split("?")[0] === "/index.html")) {
     res.writeHead(200, {
@@ -339,6 +347,35 @@ const server = http.createServer((req, res) => {
         );
       res.writeHead(ok ? 200 : 409, { "content-type": "application/json" });
       res.end(JSON.stringify({ replaying: ok }));
+    });
+
+  } else if (req.method === "POST" && req.url === "/map/bg") {
+    // Godot ships a one-shot orthographic floorplan render at boot.
+    readBodyRaw(req, (buf) => {
+      fs.writeFile(MAPBG, buf, () => {});
+      broadcast({ type: "ui.mapbg" }, false);  // overlays refresh the image
+      res.writeHead(200);
+      res.end("ok");
+    });
+
+  } else if (req.method === "GET" && req.url.startsWith("/map/bg")) {
+    fs.readFile(MAPBG, (e, data) => {
+      if (e) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
+      res.end(data);
+    });
+
+  } else if (req.method === "POST" && req.url === "/pos") {
+    // 1 Hz live positions from the renderer → overlay map (never journaled).
+    readBody(req, (body) => {
+      try {
+        broadcast({ type: "world.pos", agents: JSON.parse(body).agents }, false);
+        res.writeHead(200);
+        res.end("ok");
+      } catch {
+        res.writeHead(400);
+        res.end("bad json");
+      }
     });
 
   } else if (req.method === "GET" && req.url === "/registry") {

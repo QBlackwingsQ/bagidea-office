@@ -6,6 +6,7 @@ const AREA := Rect2(-3.4, 9.0, 3.4, 3.2)  # x, z, w, d
 const KICK_SPEED := 4.5
 
 func _ready() -> void:
+	layers = 2  # moving prop — keep it off the static map render
 	_kick_loop()
 
 func _kick_loop() -> void:

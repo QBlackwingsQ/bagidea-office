@@ -29,6 +29,8 @@ func _ready() -> void:
 	if "--shot" in OS.get_cmdline_user_args():
 		_take_shot()
 
+	_capture_map.call_deferred()
+
 	if "--wallpaper" in OS.get_cmdline_user_args():
 		DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, true)
 		DisplayServer.window_set_position(Vector2i.ZERO)
@@ -103,6 +105,33 @@ func _apply_daylight() -> void:
 	for bm in world.beam_mats:
 		bm.set_shader_parameter("strength", 0.18 * clampf(energy / 2.6, 0.0, 1.0))
 		bm.set_shader_parameter("tint", Color(sun_col.r, sun_col.g, sun_col.b * 0.8))
+
+## Orthographic top-down floorplan, rendered once into a SubViewport and
+## shipped to the daemon — the overlay's live-map background. Extents MUST
+## match overlay.html's MAP_* constants: x -11.29..17.29, z -11..14.
+func _capture_map() -> void:
+	await get_tree().create_timer(4.0).timeout  # world + runtime assets ready
+	var vp := SubViewport.new()
+	vp.size = Vector2i(800, 700)
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(vp)
+	var cam := Camera3D.new()
+	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+	cam.size = 25.0
+	cam.cull_mask = 1  # world only — characters live on render layer 2
+	cam.position = Vector3(3, 40, 1.5)
+	cam.rotation_degrees = Vector3(-90, 0, 0)
+	vp.add_child(cam)
+	cam.current = true
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img := vp.get_texture().get_image()
+	vp.queue_free()
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_r, _c, _h, _b): req.queue_free())
+	req.request_raw("http://127.0.0.1:8787/map/bg", ["content-type: image/png"],
+		HTTPClient.METHOD_POST, img.save_png_to_buffer())
 
 func _take_shot() -> void:
 	await get_tree().create_timer(2.5).timeout

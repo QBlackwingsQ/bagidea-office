@@ -95,6 +95,7 @@ var _tex_idle: ImageTexture
 var _tex_walk: ImageTexture
 
 func _ready() -> void:
+	layers = 2  # characters render on layer 2 — the map camera culls them
 	_setup_visual()
 	idle_pos = position
 	_last_pos = position

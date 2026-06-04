@@ -260,6 +260,20 @@
   .switch .knob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #8294ab; transition: left 0.15s, background 0.15s; }
   .switch.on .knob { background: rgba(94,200,255,0.4); }
   .switch.on .knob::after { left: 18px; background: var(--accent); }
+  /* top-down map */
+  #mapWrap { position: relative; width: 100%; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); }
+  #mapWrap img { width: 100%; display: block; filter: saturate(1.15); }
+  .mapicon {
+    position: absolute; width: 26px; height: 26px; border-radius: 8px;
+    transform: translate(-50%, -50%); cursor: pointer; background-color: #1c2740;
+    outline: 2px solid #4ade80; box-shadow: 0 3px 10px rgba(0,0,0,0.6); z-index: 2;
+  }
+  .mapicon:hover { z-index: 3; outline-width: 3px; }
+  .mapicon .tag {
+    position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+    font-size: 9px; font-weight: 700; color: #fff; white-space: nowrap;
+    background: rgba(5, 9, 16, 0.8); padding: 1px 6px; border-radius: 6px; margin-top: 2px;
+  }
   /* ID card */
   #idcard { text-align: center; }
   #idcard .portrait {
@@ -296,6 +310,7 @@
   <span id="conn"></span>
   <span id="theater">⏪ REPLAY</span>
   <button id="replayBtn" title="Re-enact the last 15 minutes in the office">⏪ Replay</button>
+  <button id="mapBtn" title="Top-down office map" style="margin-left:6px">🗺</button>
   <button id="dayBtn" title="World atmosphere" style="margin-left:6px">🌗</button>
   <button id="setBtn" title="Office settings — agents, roles" style="margin-left:6px">⚙</button>
   <div id="dayMenu"></div>
@@ -527,7 +542,7 @@
   // ---- settings / editor / ID card -----------------------------------------
   const modal = document.getElementById("modal");
   const modalCard = document.getElementById("modalCard");
-  function closeModal() { modal.classList.remove("open"); }
+  function closeModal() { modal.classList.remove("open"); mapOpen = false; }
   modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
   document.getElementById("setBtn").onclick = () => openSettings("agents");
 
@@ -789,6 +804,44 @@
     modalCard.querySelector("#cardChat").onclick = () => { closeModal(); setTarget(id); };
   }
 
+  // ---- top-down map ---------------------------------------------------------
+  // World→map transform; must match the ortho render in office_floor.gd.
+  const MAP = { x0: -11.29, w: 28.57, z0: -11.0, d: 25.0 };
+  let mapOpen = false, lastPos = [];
+  document.getElementById("mapBtn").onclick = () => openMap();
+
+  function openMap() {
+    modal.classList.add("open");
+    mapOpen = true;
+    modalCard.innerHTML = hdr("🗺 OFFICE MAP — click an agent to chat") +
+      `<div id="mapWrap"><img id="mapImg" src="/map/bg?t=${Date.now()}"
+          onerror="this.style.minHeight='320px'">
+        <div id="mapIcons" style="position:absolute;inset:0"></div></div>`;
+    renderMapIcons();
+  }
+
+  function renderMapIcons() {
+    if (!mapOpen) return;
+    const box = document.getElementById("mapIcons");
+    if (!box) return;
+    box.innerHTML = "";
+    for (const p of lastPos) {
+      const ic = document.createElement("div");
+      ic.className = "mapicon px";
+      ic.style.left = ((p.x - MAP.x0) / MAP.w * 100) + "%";
+      ic.style.top = ((p.z - MAP.z0) / MAP.d * 100) + "%";
+      ic.style.outlineColor = DOTS[p.state] || "#4ade80";
+      const k = 26 / 36;
+      ic.style.backgroundImage = `url(/char/npc${npcOf(p.id)}.png)`;
+      ic.style.backgroundSize = `${256 * k}px ${512 * k}px`;
+      ic.style.backgroundPosition = `${-14 * k}px ${-14 * k}px`;
+      ic.innerHTML = `<div class="tag">${nameOf(p.id)}</div>`;
+      ic.title = `${nameOf(p.id)} — ${p.state}`;
+      ic.onclick = () => { closeModal(); setTarget(p.id); };
+      box.appendChild(ic);
+    }
+  }
+
   async function api(url, body) {
     const r = await fetch(url, {
       method: "POST", headers: { "content-type": "application/json" },
@@ -799,6 +852,16 @@
 
   // ---- event routing --------------------------------------------------------
   function route(ev) {
+    if (ev.type === "world.pos") {
+      lastPos = ev.agents || [];
+      if (mapOpen) renderMapIcons();
+      return;
+    }
+    if (ev.type === "ui.mapbg") {
+      const im = document.getElementById("mapImg");
+      if (im) im.src = "/map/bg?t=" + Date.now();
+      return;
+    }
     if (ev.type === "roster.sync") {
       ROSTER = ev.agents || {};
       REGROLES = ev.roles || [];
