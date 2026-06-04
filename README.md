@@ -186,27 +186,29 @@ That's it — the daemon has zero npm dependencies.
 
 ## Running the full stack
 
+**One exe runs everything:**
+
 ```powershell
-# 1) Start the daemon (keep it running)
-node daemon\server.js
-
-# 2) Start the world in wallpaper mode
-$p = Start-Process "C:\path\to\Godot_v4.6.x-stable_win64.exe" `
-     -ArgumentList '--path', "$PWD\godot", '--', '--wallpaper' -PassThru
-
-# 3) Embed it behind your desktop icons
-.\tools\wallpaper.ps1 -Attach -ProcessId $p.Id
-
-# 4) Open the overlay (pick one)
 .\shell\target\release\bagidea-office-shell.exe
-#   → includes a floating always-on-top launcher widget: click = show/hide
-#     the overlay, top grip = drag, right-click = quit. Closing the overlay
-#     window only hides it — the launcher always brings it back.
-# or: msedge --app=http://127.0.0.1:8787/
-# or just open http://127.0.0.1:8787/ in any browser
+```
 
-# Stop everything / restore your wallpaper:
-.\tools\wallpaper.ps1 -Detach
+The shell spawns the daemon, launches the Godot office and embeds it behind
+your desktop icons, shows the circular chat-head launcher, and adds a system
+tray icon. Set `BAGIDEA_GODOT` if your Godot binary lives somewhere other
+than `E:\Tools\Godot\Godot_v4.6.3-stable_win64.exe`.
+
+- **Chat head** (circular, draggable): click = show/hide the overlay
+- **Overlay**: custom-chromed chat window; closing only hides it
+- **System tray icon → Exit BagIdea Office**: the only true exit — tears the
+  whole stack down and restores your wallpaper
+
+Manual mode (development) still works:
+
+```powershell
+node daemon\server.js
+$p = Start-Process "C:\path\to\Godot_win64.exe" -ArgumentList '--path', "$PWD\godot", '--', '--wallpaper' -PassThru
+.\tools\wallpaper.ps1 -Attach -ProcessId $p.Id      # …and -Detach to stop
+# overlay in a browser: http://127.0.0.1:8787/
 ```
 
 Windowed mode (no wallpaper) for development: just run the Godot project normally, or grab a screenshot with `-- --shot --hour=10` (the `--hour` flag forces a time of day).
