@@ -4,9 +4,8 @@ extends SceneTree
 ##   godot --headless --path godot --script res://scripts/probe.gd
 
 const MODELS := [
-	"Generator", "Generator_Pile_Chonky", "Generator_Pile_Small",
-	"Bunk_Single_Blue", "Bunk_Double_Blue", "Battery_Green", "Battery_Blue",
-	"Hazard_Floor_1", "Cryo_Tube_ON", "Meeting_Table", "Octo_Table",
+	"Hydroponics_Full", "Hydroponics_Empty", "Hydroponics_Lamp",
+	"Hydroponic_Bay", "Large_Monitor_White", "Lava_Lamp", "End_Table",
 ]
 
 func _init() -> void:

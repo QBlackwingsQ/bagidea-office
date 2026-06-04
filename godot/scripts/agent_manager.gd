@@ -8,11 +8,13 @@ const AgentScript := preload("res://scripts/agent_sprite.gd")
 
 @onready var world: Node3D = get_node("../World")
 
-var agents := {}  # id -> {node, state, desk, id, tasks: {task_id: true}}
-var desk_pool: Array[String] = ["desk1", "desk2", "desk3", "desk4"]
-var seat_cycle: Array[String] = ["cafe_s1", "cafe_s2", "cafe_c"]
+var agents := {}  # id -> {node, state, desk, bed, id, tasks: {task_id: true}}
+var desk_pool: Array[String] = ["desk1", "desk2", "desk3", "desk4", "desk5", "desk6"]
+# Idle agents spread across the cafeteria AND the recreation room (TV,
+# games, the ball corner, the garden) — the office feels lived-in.
+var seat_cycle: Array[String] = ["cafe_s1", "rec_s2", "cafe_s2", "rec_s1", "rec_s3", "rec_s4", "cafe_c"]
 var meeting_cycle: Array[String] = ["m_s1", "m_s2", "m_s3", "m_s4"]
-var bed_pool: Array[String] = ["bed1", "bed2"]
+var bed_pool: Array[String] = ["bed1", "bed2", "b3", "b4", "b5", "b6", "b7", "b8"]
 var ceo: Sprite3D
 
 func _ready() -> void:
@@ -59,6 +61,9 @@ func handle(evt: Dictionary) -> void:
 	var a: Dictionary = _ensure(id)
 	if a.state == "offline":
 		_set_state(a, "idle")
+		if a.bed != "":
+			bed_pool.append(a.bed)  # check out of the bunk
+			a.bed = ""
 		a.node.set_status("good morning ☀")
 		_clear_status_later(a, 3.0)
 	match type:
@@ -148,7 +153,7 @@ func _ensure(id: String) -> Dictionary:
 	node.position = world.WP["spawn"]
 	get_parent().add_child(node)
 	node.set_status(id)
-	var a := {"node": node, "state": "idle", "desk": "", "id": id, "tasks": {}}
+	var a := {"node": node, "state": "idle", "desk": "", "bed": "", "id": id, "tasks": {}}
 	agents[id] = a
 	# The main agent heads to the executive office; everyone else idles in cafe.
 	_walk(node, "exec_c" if id == "main" else _next_seat())
@@ -167,10 +172,12 @@ func _to_dorm(id: String) -> void:
 	a.tasks.clear()
 	_set_state(a, "offline")
 	a.node.set_status("offline 💤")
-	var bed: String = bed_pool.pop_front() if bed_pool.size() > 0 else "dorm_c"
-	if bed != "dorm_c":
-		bed_pool.append(bed)  # cycle: bunks are shared
-	_walk(a.node, bed)
+	# Reserve a bunk (8 total); overflow rests in the recreation room.
+	if bed_pool.size() > 0:
+		a.bed = bed_pool.pop_front()
+		_walk(a.node, a.bed)
+	else:
+		_walk(a.node, "rec_s4")
 
 func _to_desk(a: Dictionary) -> void:
 	if a.desk == "":

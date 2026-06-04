@@ -22,7 +22,7 @@ const WP := {
 	"desk3": Vector3(1, 0.86, -6.35),
 	"desk4": Vector3(5, 0.86, -6.35),
 	"lobby_c": Vector3(-1, 0.86, 1.5),
-	"spawn": Vector3(-1, 0.86, 5.8),
+	"spawn": Vector3(-1, 0.86, 12.6),
 	"cafe_c": Vector3(7.2, 0.86, 0.2),
 	"cafe_s1": Vector3(5.7, 0.86, 1.5),
 	"cafe_s2": Vector3(8.2, 0.86, 2.6),
@@ -48,6 +48,25 @@ const WP := {
 	"door_md": Vector3(13, 0.86, 2),
 	"bed1": Vector3(11.5, 0.86, 4.2),
 	"bed2": Vector3(14.5, 0.86, 4.2),
+	# South wing: Recreation (west) + Dormitory XL (east)
+	"rec_c": Vector3(-3.5, 0.86, 9.5),
+	"door_lr": Vector3(-1, 0.86, 6),
+	"rec_s1": Vector3(-6.6, 0.86, 8.4),
+	"rec_s2": Vector3(-1.6, 0.86, 10.6),
+	"rec_s3": Vector3(-4.6, 0.86, 7.6),
+	"rec_s4": Vector3(-6.9, 0.86, 11.2),
+	"dormx_c": Vector3(9.5, 0.86, 9.3),
+	"door_cd2": Vector3(7, 0.86, 6),
+	"door_dd": Vector3(13, 0.86, 6),
+	"b3": Vector3(4.6, 0.86, 10.7),
+	"b4": Vector3(6.4, 0.86, 10.7),
+	"b5": Vector3(8.2, 0.86, 10.7),
+	"b6": Vector3(10.0, 0.86, 10.7),
+	"b7": Vector3(11.8, 0.86, 10.7),
+	"b8": Vector3(13.6, 0.86, 10.7),
+	# Ops extra desks (east column)
+	"desk5": Vector3(8, 0.86, -7.15),
+	"desk6": Vector3(8, 0.86, -6.35),
 }
 
 const EDGES := [
@@ -57,7 +76,7 @@ const EDGES := [
 	["ops_c", "ap1"], ["ap1", "desk1"], ["ops_c", "ap2"], ["ap2", "desk2"],
 	["ops_c", "desk3"], ["ops_c", "desk4"],
 	["lobby_c", "door_el"], ["lobby_c", "door_ol"], ["lobby_c", "door_sl"],
-	["lobby_c", "door_lc"], ["lobby_c", "spawn"],
+	["lobby_c", "door_lc"],
 	["cafe_c", "door_oc"], ["cafe_c", "door_lc"],
 	["cafe_c", "cafe_s1"], ["cafe_c", "cafe_s2"],
 	["sec_c", "door_sl"], ["sec_c", "sec_window"],
@@ -68,6 +87,13 @@ const EDGES := [
 	["meeting_c", "m_s3"], ["meeting_c", "m_s4"],
 	["meeting_c", "door_md"], ["door_md", "dorm_c"],
 	["dorm_c", "bed1"], ["dorm_c", "bed2"],
+	["lobby_c", "door_lr"], ["door_lr", "rec_c"], ["rec_c", "spawn"],
+	["rec_c", "rec_s1"], ["rec_c", "rec_s2"], ["rec_c", "rec_s3"], ["rec_c", "rec_s4"],
+	["cafe_c", "door_cd2"], ["door_cd2", "dormx_c"],
+	["dorm_c", "door_dd"], ["door_dd", "dormx_c"],
+	["dormx_c", "b3"], ["dormx_c", "b4"], ["dormx_c", "b5"],
+	["dormx_c", "b6"], ["dormx_c", "b7"], ["dormx_c", "b8"],
+	["ops_c", "desk5"], ["ops_c", "desk6"],
 ]
 
 const BOARD_COLORS := {
@@ -173,11 +199,15 @@ func _kit_architecture() -> void:
 			_no_shadow(seg)  # sun shines through the window panels
 	_kit_scaled("Wall_Display_Blue", Vector3(0.9, 0.35, -9.72), 0.0, Vector3.ONE * ws)
 
-	# West & far-east perimeter (4 × 4.075 m, rotated)
+	# West & far-east perimeter (extended past the south wing, rotated)
 	for i in 4:
 		var cz := -10.15 + 4.075 * (i + 0.5)
 		_kit_scaled("Wall_Grey", Vector3(-10.15, 0, cz), 90.0, Vector3(1.019, ws, ws))
 		_kit_scaled("Wall_Grey", Vector3(16.15, 0, cz), -90.0, Vector3(1.019, ws, ws))
+	for i in 2:
+		var cz := 6.15 + 3.5 * (i + 0.5)
+		_kit_scaled("Wall_Grey", Vector3(-10.15, 0, cz), 90.0, Vector3(0.875, ws, ws))
+		_kit_scaled("Wall_Grey", Vector3(16.15, 0, cz), -90.0, Vector3(0.875, ws, ws))
 
 	# Wing divider at x=10 with real doorway pieces (ops→server, cafe→meeting)
 	var divider := ["Wall_With_Door_Grey", "Wall_Grey", "Wall_With_Door_Grey", "Wall_Grey"]
@@ -201,6 +231,11 @@ func _kit_architecture() -> void:
 	for s in [[11.1, 2.2], [14.9, 2.2]]:
 		_kit_scaled("Railing_Flat", Vector3(s[0], 0, -3), 0.0, Vector3(s[1] / 3.92, 1.06, 1.0))
 		_kit_scaled("Railing_Flat", Vector3(s[0], 0, 2), 0.0, Vector3(s[1] / 3.92, 1.06, 1.0))
+	# South wing partitions: z=6 row (doors to rec/dorm-xl) + rec|dorm at x=3
+	for s in [[-5.9, 8.2], [3.0, 6.4], [10.0, 4.4], [14.9, 2.2]]:
+		_kit_scaled("Railing_Flat", Vector3(s[0], 0, 6), 0.0, Vector3(s[1] / 3.92, 1.06, 1.0))
+	for s in [[7.35, 2.7], [11.65, 2.7]]:
+		_kit_scaled("Railing_Flat", Vector3(3, 0, s[0]), 90.0, Vector3(s[1] / 3.92, 1.06, 1.0))
 
 	# Zone floors: calm plain metal everywhere, zone-keyed by a subtle tint.
 	_kit_floor("Floor_Metal_Square", Vector3(-6, 0, -6.5), 7.6, 6.6, 3, 3, Color(1.0, 0.88, 0.7))   # exec warm
@@ -211,6 +246,8 @@ func _kit_architecture() -> void:
 	_kit_floor("Floor_Metal_Square", Vector3(13, 0, -6.5), 5.6, 6.6, 2, 3, Color(0.7, 0.92, 0.82))  # server teal
 	_kit_floor("Floor_Metal_Square", Vector3(13, 0, -0.5), 5.6, 4.6, 2, 2, Color(0.86, 0.8, 1.0))   # meeting violet
 	_kit_floor("Floor_Metal_Square", Vector3(13, 0, 4), 5.6, 3.6, 2, 1, Color(0.78, 0.82, 0.98))    # dorm dusk
+	_kit_floor("Floor_Metal_Square", Vector3(-3.5, 0, 9.5), 12.6, 6.6, 4, 2, Color(0.84, 1.0, 0.86)) # rec green
+	_kit_floor("Floor_Metal_Square", Vector3(9.5, 0, 9.5), 12.6, 6.6, 4, 2, Color(0.78, 0.82, 0.98)) # dorm-xl
 
 func _ready() -> void:
 	_build_graph()
@@ -423,10 +460,10 @@ func _build_geometry() -> void:
 
 	# ---- Architecture: kit shell (walls/partitions/floors) or CSG fallback
 	if kit:
-		_box(Vector3(3, -0.1, -2), Vector3(26.6, 0.2, 16.6), _mat(Color(0.12, 0.13, 0.16), 0.5))
+		_box(Vector3(3, -0.1, 1.5), Vector3(26.6, 0.2, 23.6), _mat(Color(0.12, 0.13, 0.16), 0.5))
 		_kit_architecture()
 	else:
-		_box(Vector3(3, -0.1, -2), Vector3(26.6, 0.2, 16.6), planks)
+		_box(Vector3(3, -0.1, 1.5), Vector3(26.6, 0.2, 23.6), planks)
 		# Minimal CSG shell for the east wing (kit does it properly)
 		_box(Vector3(16.15, 1.75, -2), Vector3(0.3, 3.5, 16.3), wall)
 		_box(Vector3(10, 1.75, -9.4), Vector3(0.3, 3.5, 1.2), wall)
@@ -483,7 +520,7 @@ func _build_geometry() -> void:
 			_box(Vector3(bx + bw / 2.0, bh * 0.6, -11.3), Vector3(bw * 0.4, 0.18, 0.05),
 				_mat(Color(0.9, 0.8, 0.5), 0.5, Color(1, 0.85, 0.5), 1.2), 0)
 		bx += bw + bldg_rng.randf_range(0.3, 1.0)
-	_box(Vector3(3, 3.7, -2), Vector3(26.6, 0.2, 16.6), wall, 3)
+	_box(Vector3(3, 3.7, 1.5), Vector3(26.6, 0.2, 23.6), wall, 3)
 
 	# ---- Executive Office
 	if kit:
@@ -511,7 +548,14 @@ func _build_geometry() -> void:
 	_omni(Vector3(-6, 1.7, -8.6), Color(0.6, 0.85, 1.0), 1.8, 4.5)
 	_omni(Vector3(-6, 2.5, -5.2), Color(1.0, 0.8, 0.6), 1.4, 7.0)
 
-	# ---- Ops Floor: 4 desk pods
+	# ---- Ops Floor: 6 desk pods (east column faces the other way)
+	if kit:
+		_box(Vector3(8, 0.4, -8), Vector3(1.6, 0.8, 0.8), dark_wood)
+		_kit("Large_Monitor_Blue", Vector3(8, 0.8, -8.15), 180.0, 0.26)
+		_kit("Chair_1", Vector3(8, 0, -7.1), 0.0, 0.6)
+		_box(Vector3(8, 0.4, -5.5), Vector3(1.6, 0.8, 0.8), dark_wood)
+		_kit("Large_Monitor_Blue", Vector3(8, 0.8, -5.4), 0.0, 0.26)
+		_kit("Chair_1", Vector3(8, 0, -6.4), 180.0, 0.6)
 	for d in [Vector3(1, 0, -8), Vector3(5, 0, -8), Vector3(1, 0, -5.5), Vector3(5, 0, -5.5)]:
 		if kit:
 			_box(Vector3(d.x, 0.4, d.z), Vector3(1.6, 0.8, 0.8), dark_wood)     # desk slab
@@ -608,14 +652,51 @@ func _build_geometry() -> void:
 		_kit("Briefing_Screen_Purple", Vector3(15.5, 0, -0.5), -90.0, 0.5)
 	_omni(Vector3(13, 2.5, -0.5), Color(0.85, 0.8, 1.0), 1.6, 6.0)
 
-	# ---- Dormitory (offline agents sleep here)
+	# ---- Quiet pods (the original 2-bed dorm)
 	if kit:
 		_kit("Bunk_Single_Blue", Vector3(11.5, 0, 5.1), 0.0, 0.7)
 		_kit("Bunk_Single_Red", Vector3(14.5, 0, 5.1), 0.0, 0.7)
 		_kit("Cryo_Tube_ON", Vector3(15.6, 0, 2.9), 0.0, 0.45)
-		_kit("Floor_Lamp", Vector3(10.8, 0, 5.4), 0.0, 0.9)
 		_kit("Plant_1", Vector3(10.7, 0, 2.6), 120.0, 1.7)
 	_omni(Vector3(13, 2.2, 4.2), Color(1.0, 0.75, 0.5), 1.1, 5.0)
+
+	# ---- Recreation Room: TV corner, game table, garden, dog and ball
+	if kit:
+		_kit("Large_Monitor_White", Vector3(-9.45, 0, 8.4), 90.0, 0.5)        # the TV
+		_kit("Chair_1", Vector3(-7.6, 0, 7.9), 90.0, 0.6)
+		_kit("Chair_1", Vector3(-7.6, 0, 8.9), 90.0, 0.6)
+		_kit("End_Table", Vector3(-7.6, 0, 6.9), 0.0, 0.8)
+		_kit("Lava_Lamp", Vector3(-7.6, 0.75, 6.9), 0.0, 1.0)
+		_kit("Cafeteria_Table", Vector3(-3.5, 0, 7.6), 90.0, 0.8)            # game table
+		_kit("3D_Chess_Board", Vector3(-3.5, 0.62, 7.6), 15.0, 0.35)
+		_kit("Chair_1", Vector3(-2.5, 0, 7.6), -90.0, 0.6)
+		_kit("Hydroponics_Full", Vector3(-8.6, 0, 11.6), 0.0, 0.85)          # garden
+		_kit("Hydroponics_Full", Vector3(-6.9, 0, 12.2), 25.0, 0.85)
+		_kit("Hydroponics_Lamp", Vector3(-7.8, 0, 11.9), 0.0, 0.85)
+		_kit("Plant_1", Vector3(-9.3, 0, 6.7), 60.0, 1.7)
+		_kit("Floor_Lamp", Vector3(0.5, 0, 12.4), 0.0, 0.9)
+	# Procedural rec life: the office dog and a football (kit-independent).
+	var dog := Sprite3D.new()
+	dog.set_script(load("res://scripts/dog_sprite.gd"))
+	add_child(dog)
+	dog.position = Vector3(-5.0, 0.27, 10.4)
+	var ball := CSGSphere3D.new()
+	ball.radius = 0.2
+	ball.material = _mat(Color(0.94, 0.94, 0.96), 0.35)
+	ball.set_script(load("res://scripts/rec_ball.gd"))
+	add_child(ball)
+	ball.position = Vector3(-1.8, 0.2, 10.4)
+	_omni(Vector3(-3.5, 2.6, 9.5), Color(1.0, 0.85, 0.6), 2.4, 9.0)
+	_omni(Vector3(-7.8, 1.9, 11.9), Color(0.6, 1.0, 0.7), 1.2, 4.0)           # garden glow
+
+	# ---- Dormitory XL: six bunks for the night shift
+	if kit:
+		var bunk_colors := ["Blue", "Green", "Orange", "Purple", "Red", "Grey"]
+		for i in 6:
+			_kit("Bunk_Single_" + bunk_colors[i], Vector3(4.6 + i * 1.8, 0, 11.7), 0.0, 0.7)
+		_kit("Floor_Lamp", Vector3(15.2, 0, 12.2), 0.0, 0.9)
+		_kit("Plant_1", Vector3(3.7, 0, 6.8), 200.0, 1.7)
+	_omni(Vector3(9.5, 2.3, 10.0), Color(1.0, 0.78, 0.55), 1.6, 9.0)
 
 	# Coffee steam
 	var steam := GPUParticles3D.new()
@@ -667,13 +748,13 @@ func _build_geometry() -> void:
 
 	# ---- Atmosphere: room fog + god-ray cards + dust
 	var fog := FogVolume.new()
-	fog.size = Vector3(26, 3.5, 16)
+	fog.size = Vector3(26, 3.5, 23)
 	var fm := FogMaterial.new()
 	fm.density = 0.035
 	fm.albedo = Color(0.85, 0.9, 1.0)
 	fog.material = fm
 	add_child(fog)
-	fog.position = Vector3(3, 1.75, -2)
+	fog.position = Vector3(3, 1.75, 1.5)
 
 	# God-ray cards anchored to the window slots (kit shell: two big glass bays)
 	for wx in ([-3.58, 5.39] if kit else [-7.0, -2.5, 2.5, 7.0]):
