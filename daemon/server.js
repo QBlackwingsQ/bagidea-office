@@ -672,7 +672,11 @@ const server = http.createServer((req, res) => {
   } else if (req.method === "POST" && req.url === "/event") {
     readBody(req, (body) => {
       try {
-        broadcast(JSON.parse(body));
+        const evt = JSON.parse(body);
+        // Hook events from the host Claude Code session arrive as "claude" —
+        // that IS the Director: map them onto main (no ghost duplicate).
+        if (evt.agent === "claude") evt.agent = "main";
+        broadcast(evt);
         res.writeHead(200);
         res.end("ok");
       } catch {
@@ -686,7 +690,8 @@ const server = http.createServer((req, res) => {
     readBody(req, (body) => {
       let p;
       try { p = JSON.parse(body); } catch { res.writeHead(400); return res.end(); }
-      const { id, agent = "claude", task = "", tool = "?", input = "" } = p;
+      let { id, agent = "claude", task = "", tool = "?", input = "" } = p;
+      if (agent === "claude") agent = "main";  // host session = the Director
       broadcast({ type: "perm.requested", agent, task, tool, perm: id, input });
       const timer = setTimeout(() => {
         // No human around — deny safely and let the agent re-plan.
