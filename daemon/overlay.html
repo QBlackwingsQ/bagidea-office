@@ -248,6 +248,18 @@
     color: #ffd28a; background: rgba(255,210,138,0.08); border: 1px solid rgba(255,210,138,0.35);
   }
   .assistrow .sparkle:disabled { opacity: 0.5; cursor: wait; }
+  .checks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chk {
+    font-size: 11.5px; padding: 4px 11px; border-radius: 16px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.12); color: var(--dim); user-select: none;
+  }
+  .chk.on { color: var(--accent); border-color: var(--accent); background: rgba(94,200,255,0.1); }
+  .autobadge { font-size: 9.5px; color: #ffd28a; border: 1px solid rgba(255,210,138,0.4); border-radius: 10px; padding: 1px 7px; margin-left: 6px; }
+  .switch { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); margin-bottom: 10px; cursor: pointer; }
+  .switch .knob { width: 34px; height: 18px; border-radius: 12px; background: rgba(255,255,255,0.12); position: relative; transition: background 0.15s; }
+  .switch .knob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #8294ab; transition: left 0.15s, background 0.15s; }
+  .switch.on .knob { background: rgba(94,200,255,0.4); }
+  .switch.on .knob::after { left: 18px; background: var(--accent); }
   /* ID card */
   #idcard { text-align: center; }
   #idcard .portrait {
@@ -331,7 +343,7 @@
   const ROLES = ["Researcher", "Engineer", "Designer", "Analyst", "Operator", "Specialist"];
   const NPCS = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12];
   // Live registry from the daemon (roster.sync) — identity source of truth.
-  let ROSTER = {}, REGROLES = [];
+  let ROSTER = {}, REGROLES = [], REGSKILLS = {}, REGTOOLS = [], AUTOSKILLS = true;
   function npcOf(id) {
     if (ROSTER[id] && ROSTER[id].avatar) return ROSTER[id].avatar;
     if (id === "main") return 7;
@@ -525,13 +537,21 @@
 
   function openSettings(tab) {
     modal.classList.add("open");
-    const tabs = `<div class="tabs">
-      <div class="tab ${tab === "agents" ? "on" : ""}" data-t="agents">AGENTS</div>
-      <div class="tab ${tab === "roles" ? "on" : ""}" data-t="roles">ROLES</div>
-    </div>`;
+    const T = (t, label) => `<div class="tab ${tab === t ? "on" : ""}" data-t="${t}">${label}</div>`;
+    const tabs = `<div class="tabs">${T("agents", "AGENTS")}${T("roles", "ROLES")}${T("skills", "SKILLS")}${T("tools", "TOOLS")}</div>`;
     let bodyHtml = "";
     if (tab === "agents") {
       bodyHtml = `<div id="alist"></div><button class="bigbtn" id="newAgent">＋ Hire a new agent</button>`;
+    } else if (tab === "skills") {
+      bodyHtml = `<div class="switch ${AUTOSKILLS ? "on" : ""}" id="autoSw">
+          <div class="knob"></div> Auto-learn: agents distill finished work into new skills</div>
+        <div id="slist"></div><button class="bigbtn" id="newSkill">＋ New skill</button>`;
+    } else if (tab === "tools") {
+      bodyHtml = `<div id="tlist"></div>
+        <div class="assistrow" style="margin-top:8px">
+          <input id="newTool" placeholder="Tool name… (e.g. WebSearch, Bash)">
+          <button class="sparkle" id="addTool">＋ Add</button>
+        </div>`;
     } else {
       bodyHtml = `<div id="rlist"></div>
         <div class="assistrow" style="margin-top:8px">
@@ -550,12 +570,45 @@
         f.className = "face"; face(f, id, 34);
         row.appendChild(f);
         row.insertAdjacentHTML("beforeend",
-          `<div class="meta"><b>${a.name}</b><span>${a.role} · ${id}</span></div>` +
+          `<div class="meta"><b>${a.name}</b><span>${a.role} · ${id}` +
+          ` · 🎯${(a.skills || []).length} · 🔧${(a.tools || []).length}</span></div>` +
           (a.protected ? `<span class="lock" title="Core agent — cannot be deleted">🔒</span>` : ""));
         row.onclick = () => openEditor(id);
         list.appendChild(row);
       }
       modalCard.querySelector("#newAgent").onclick = () => openEditor(null);
+    } else if (tab === "skills") {
+      modalCard.querySelector("#autoSw").onclick = async (e) => {
+        await api("/registry/autoskills", { enabled: !AUTOSKILLS });
+        e.currentTarget.classList.toggle("on", !AUTOSKILLS);
+      };
+      const list = modalCard.querySelector("#slist");
+      for (const [id, s] of Object.entries(REGSKILLS)) {
+        const row = document.createElement("div");
+        row.className = "arow";
+        row.innerHTML = `<div class="meta"><b>🎯 ${s.name}` +
+          (s.auto ? `<span class="autobadge">AUTO · by ${s.by || "?"}</span>` : "") +
+          `</b><span>${s.description || ""}</span></div>`;
+        row.onclick = () => openSkillEditor(id);
+        list.appendChild(row);
+      }
+      modalCard.querySelector("#newSkill").onclick = () => openSkillEditor(null);
+    } else if (tab === "tools") {
+      const list = modalCard.querySelector("#tlist");
+      for (const t of REGTOOLS) {
+        const row = document.createElement("div");
+        row.className = "arow";
+        row.style.cursor = "default";
+        row.innerHTML = `<div class="meta"><b>🔧 ${t}</b></div>` +
+          `<div class="winbtn hide" title="Remove tool">✕</div>`;
+        row.querySelector(".winbtn").onclick = () =>
+          api("/registry/tool", { name: t, remove: true }).then(() => openSettings("tools"));
+        list.appendChild(row);
+      }
+      modalCard.querySelector("#addTool").onclick = () => {
+        const v = modalCard.querySelector("#newTool").value.trim();
+        if (v) api("/registry/tool", { name: v }).then(() => openSettings("tools"));
+      };
     } else {
       const list = modalCard.querySelector("#rlist");
       for (const r of REGROLES) {
@@ -575,10 +628,45 @@
     }
   }
 
+  function openSkillEditor(id) {
+    modal.classList.add("open");
+    const s = id ? REGSKILLS[id] : { name: "", description: "", content: "" };
+    modalCard.innerHTML = hdr(id ? "🎯 EDIT SKILL" : "🎯 NEW SKILL") +
+      `<div class="field"><label>NAME</label><input id="sName" maxlength="60"></div>
+       <div class="field"><label>DESCRIPTION (ให้ agent รู้ว่าควรหยิบใช้เมื่อไหร่)</label><input id="sDesc" maxlength="200"></div>
+       <div class="field"><label>SKILL CONTENT — ขั้นตอน / วิธีทำ</label><textarea id="sBody" style="min-height:160px"></textarea></div>
+       <div class="btnrow">
+         ${id ? `<button class="danger" id="sDel">🗑 Delete</button>` : ""}
+         <button id="sCancel">Cancel</button>
+         <button class="primary" id="sSave">💾 Save</button>
+       </div>`;
+    modalCard.querySelector("#sName").value = s.name;
+    modalCard.querySelector("#sDesc").value = s.description || "";
+    modalCard.querySelector("#sBody").value = s.content || "";
+    modalCard.querySelector("#sCancel").onclick = () => openSettings("skills");
+    modalCard.querySelector("#sSave").onclick = async () => {
+      const name = modalCard.querySelector("#sName").value.trim();
+      if (!name) return;
+      await api("/registry/skill", {
+        id, name,
+        description: modalCard.querySelector("#sDesc").value,
+        content: modalCard.querySelector("#sBody").value,
+      });
+      openSettings("skills");
+    };
+    const del = modalCard.querySelector("#sDel");
+    if (del) del.onclick = async () => {
+      await api("/registry/skill", { id, remove: true });
+      openSettings("skills");
+    };
+  }
+
   function openEditor(id) {
     modal.classList.add("open");
     const a = id ? ROSTER[id] : { name: "", role: REGROLES[2] || "Specialist", avatar: 1, prompt: "" };
     let avatar = a.avatar || 1;
+    const mySkills = new Set(a.skills || []);
+    const myTools = new Set(a.tools || []);
     modalCard.innerHTML = hdr(id ? "✏ EDIT AGENT" : "＋ HIRE AGENT") +
       `<div class="field"><label>AVATAR</label><div id="avGrid"></div></div>
        <div class="field"><label>NAME</label><input id="eName" maxlength="40"></div>
@@ -590,11 +678,33 @@
          </div></div>
        <div class="field"><label>SYSTEM PROMPT (หน้าที่ / นิสัย / มาตรฐานงาน — แก้ได้อิสระ)</label>
          <textarea id="ePrompt"></textarea></div>
+       <div class="field"><label>🎯 SKILLS</label><div class="checks" id="eSkills"></div></div>
+       <div class="field"><label>🔧 TOOLS (ว่าง = ชุดอ่านอย่างเดียว Read/Glob/Grep)</label><div class="checks" id="eTools"></div></div>
        <div class="btnrow">
          ${id && !a.protected ? `<button class="danger" id="eDel">🗑 Delete</button>` : ""}
          <button id="eCancel">Cancel</button>
          <button class="primary" id="eSave">💾 Save</button>
        </div>`;
+    // skill / tool assignment chips
+    const skBox = modalCard.querySelector("#eSkills");
+    const ids = Object.keys(REGSKILLS);
+    skBox.innerHTML = ids.length ? "" : `<span style="font-size:11px;color:var(--dim)">no skills in the library yet</span>`;
+    for (const sid of ids) {
+      const c = document.createElement("div");
+      c.className = "chk" + (mySkills.has(sid) ? " on" : "");
+      c.textContent = REGSKILLS[sid].name;
+      c.title = REGSKILLS[sid].description || "";
+      c.onclick = () => { mySkills.has(sid) ? mySkills.delete(sid) : mySkills.add(sid); c.classList.toggle("on"); };
+      skBox.appendChild(c);
+    }
+    const tlBox = modalCard.querySelector("#eTools");
+    for (const t of REGTOOLS) {
+      const c = document.createElement("div");
+      c.className = "chk" + (myTools.has(t) ? " on" : "");
+      c.textContent = t;
+      c.onclick = () => { myTools.has(t) ? myTools.delete(t) : myTools.add(t); c.classList.toggle("on"); };
+      tlBox.appendChild(c);
+    }
     // avatar grid: the 12 NPC faces
     const grid = modalCard.querySelector("#avGrid");
     for (let n = 1; n <= 12; n++) {
@@ -639,6 +749,7 @@
       const r = await api("/registry/agent", {
         id, name, role: roleSel.value, avatar,
         prompt: modalCard.querySelector("#ePrompt").value,
+        skills: [...mySkills], tools: [...myTools],
       });
       closeModal();
       if (r.id) { ensureAgent(r.id); setTarget(r.id); }
@@ -691,6 +802,9 @@
     if (ev.type === "roster.sync") {
       ROSTER = ev.agents || {};
       REGROLES = ev.roles || [];
+      REGSKILLS = ev.skills || {};
+      REGTOOLS = ev.tools || [];
+      AUTOSKILLS = ev.autoSkills !== false;
       for (const id of Object.keys(ROSTER)) ensureAgent(id);
       renderRail();
       setTarget(target);   // refresh name/role if the target was edited
@@ -752,6 +866,9 @@
       if (missions[key]) { missions[key].state = "running"; renderMissions(); }
       ensureAgent(ev.agent, "working");
       if (!ev.replay) addChip(`🛡 ${ev.tool} — <b>${ev.type === "perm.approved" ? "allowed" : "denied"}</b>`);
+    }
+    else if (ev.type === "skill.created") {
+      if (!ev.replay) addChip(`📚 <b>${ev.agent}</b> learned a new skill: <b>${ev.skill}</b>`);
     }
     else if (ev.type === "agent.online") ensureAgent(ev.agent, "idle");
     else if (ev.type === "agent.offline") ensureAgent(ev.agent, "offline");

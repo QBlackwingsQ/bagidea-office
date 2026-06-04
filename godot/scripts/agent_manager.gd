@@ -126,6 +126,10 @@ func handle(evt: Dictionary) -> void:
 				_board_clear_later(task)
 			if a.tasks.is_empty():
 				_finish(a, "denied ✗")
+		"skill.created":
+			# Hermes moment: the agent distilled its work into a new skill.
+			a.node.set_status("📚 learned: " + str(evt.get("skill", "")))
+			_clear_status_later(a, 6.0)
 		"chat.message":
 			# Speech bubble: first line of what the agent actually said.
 			var text := str(evt.get("text", "")).split("\n")[0]

@@ -61,7 +61,7 @@ loadReg();
 // also gets a fresh snapshot on connect.
 function rosterEvt() {
   return { type: "roster.sync", agents: reg.agents, roles: reg.roles,
-    tools: reg.tools, skills: reg.skills };
+    tools: reg.tools, skills: reg.skills, autoSkills: reg.autoSkills !== false };
 }
 function pushRoster() { broadcast(rosterEvt(), false); }
 
@@ -69,6 +69,45 @@ function slugId(name) {
   const s = String(name).toLowerCase().replace(/[^a-z0-9ก-๙]+/g, "-")
     .replace(/^-+|-+$/g, "").slice(0, 24);
   return s || "agent" + Date.now() % 10000;
+}
+
+// Hermes-style auto-skills: after a real multi-tool task, a quick
+// reflection call decides whether the work distills into a reusable skill.
+// New skills land in the registry, auto-assigned to the agent that earned
+// them, and the office hears about it (skill.created).
+async function maybeLearnSkill(agent, task, prompt, acts, finalText) {
+  if (reg.autoSkills === false || acts.length < 3) return;
+  const existing = Object.values(reg.skills).map((s) => s.name).join(", ") || "(none)";
+  const out = await claudeText(
+    `An AI office agent "${agent}" just completed a task.\n` +
+    `Task prompt: ${String(prompt).slice(0, 600)}\n` +
+    `Tools used in order: ${acts.join(" -> ")}\n` +
+    `Final report: ${String(finalText).slice(0, 800)}\n\n` +
+    `Existing skills: ${existing}\n\n` +
+    `If this work contains a REUSABLE, GENERALIZABLE procedure not already ` +
+    `covered by an existing skill, distill it. Output STRICT JSON only:\n` +
+    `{"name":"short-kebab-name","description":"one line","content":"imperative ` +
+    `step-by-step instructions, max 12 lines"}\n` +
+    `If nothing is worth saving, output exactly: NONE`);
+  const m = out.match(/\{[\s\S]*\}/);
+  if (!m) return;
+  try {
+    const sk = JSON.parse(m[0]);
+    if (!sk.name || !sk.content) return;
+    const id = slugId(sk.name);
+    if (reg.skills[id]) return;
+    reg.skills[id] = {
+      name: String(sk.name).slice(0, 60),
+      description: String(sk.description || "").slice(0, 200),
+      content: String(sk.content).slice(0, 4000),
+      auto: true, by: agent,
+    };
+    const a = reg.agents[agent];
+    if (a && !a.skills.includes(id)) a.skills.push(id);
+    saveReg();
+    pushRoster();
+    broadcast({ type: "skill.created", agent, task, skill: reg.skills[id].name });
+  } catch {}
 }
 
 // Plain headless claude call → final text (prompt drafting, reflections).
@@ -204,6 +243,8 @@ function runClaude(agent, prompt) {
   child.stdin.end();
 
   let buf = "";
+  const acts = [];      // tool trail — feeds the auto-skill reflection
+  let lastText = "";
   child.stdout.on("data", (c) => {
     buf += c;
     let i;
@@ -216,13 +257,17 @@ function runClaude(agent, prompt) {
 
       if (m.type === "assistant" && m.message && Array.isArray(m.message.content)) {
         for (const b of m.message.content) {
-          if (b.type === "tool_use")
+          if (b.type === "tool_use") {
+            acts.push(b.name);
             broadcast({ type: "task.progress", agent, task, tool: b.name });
-          else if (b.type === "text" && b.text.trim())
+          } else if (b.type === "text" && b.text.trim()) {
+            lastText = b.text;
             broadcast({ type: "chat.message", agent, task, text: b.text });
+          }
         }
       } else if (m.type === "result") {
         broadcast({ type: m.is_error ? "task.failed" : "task.completed", agent, task });
+        if (!m.is_error) maybeLearnSkill(agent, task, prompt, acts, lastText);
       }
     }
   });
@@ -343,6 +388,70 @@ const server = http.createServer((req, res) => {
       } catch (e) {
         res.writeHead(400);
         res.end(String(e.message));
+      }
+    });
+
+  } else if (req.method === "POST" && req.url === "/registry/skill") {
+    // Create, update or remove a skill in the library. Removal also strips
+    // the skill from every agent that had it assigned.
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        if (p.remove) {
+          delete reg.skills[p.id];
+          for (const a of Object.values(reg.agents))
+            a.skills = (a.skills || []).filter((s) => s !== p.id);
+        } else {
+          const id = p.id || slugId(p.name);
+          reg.skills[id] = {
+            ...(reg.skills[id] || {}),
+            name: String(p.name || id).slice(0, 60),
+            description: String(p.description || "").slice(0, 200),
+            content: String(p.content || "").slice(0, 4000),
+          };
+        }
+        saveReg();
+        pushRoster();
+        res.writeHead(200);
+        res.end("ok");
+      } catch (e) {
+        res.writeHead(400);
+        res.end(String(e.message));
+      }
+    });
+
+  } else if (req.method === "POST" && req.url === "/registry/tool") {
+    readBody(req, (body) => {
+      try {
+        const { name, remove } = JSON.parse(body);
+        const n = String(name || "").trim().slice(0, 60);
+        if (!n) throw new Error("no name");
+        if (remove) {
+          reg.tools = reg.tools.filter((t) => t !== n);
+          for (const a of Object.values(reg.agents))
+            a.tools = (a.tools || []).filter((t) => t !== n);
+        } else if (!reg.tools.includes(n)) reg.tools.push(n);
+        saveReg();
+        pushRoster();
+        res.writeHead(200);
+        res.end("ok");
+      } catch (e) {
+        res.writeHead(400);
+        res.end(String(e.message));
+      }
+    });
+
+  } else if (req.method === "POST" && req.url === "/registry/autoskills") {
+    readBody(req, (body) => {
+      try {
+        reg.autoSkills = !!JSON.parse(body).enabled;
+        saveReg();
+        pushRoster();
+        res.writeHead(200);
+        res.end("ok");
+      } catch {
+        res.writeHead(400);
+        res.end("bad json");
       }
     });
 
