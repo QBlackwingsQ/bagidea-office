@@ -198,8 +198,11 @@ $p = Start-Process "C:\path\to\Godot_v4.6.x-stable_win64.exe" `
 .\tools\wallpaper.ps1 -Attach -ProcessId $p.Id
 
 # 4) Open the overlay (pick one)
-msedge --app=http://127.0.0.1:8787/
-# or: .\shell\target\release\bagidea-office-shell.exe
+.\shell\target\release\bagidea-office-shell.exe
+#   → includes a floating always-on-top launcher widget: click = show/hide
+#     the overlay, top grip = drag, right-click = quit. Closing the overlay
+#     window only hides it — the launcher always brings it back.
+# or: msedge --app=http://127.0.0.1:8787/
 # or just open http://127.0.0.1:8787/ in any browser
 
 # Stop everything / restore your wallpaper:
