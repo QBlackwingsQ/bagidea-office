@@ -25,8 +25,11 @@ use tray_icon::{
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::Graphics::Gdi::{CreateEllipticRgn, CreateRoundRectRgn, SetWindowRgn};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowExW, FindWindowW, GetWindowThreadProcessId, IsWindowVisible,
-    SendMessageTimeoutW, SetParent, SystemParametersInfoW, SMTO_NORMAL, SPI_SETDESKWALLPAPER,
+    EnumWindows, FindWindowExW, FindWindowW, GetWindowLongW, GetWindowThreadProcessId,
+    IsWindowVisible, SendMessageTimeoutW, SetParent, SetWindowLongW, SetWindowPos,
+    SystemParametersInfoW, GWL_STYLE, SMTO_NORMAL, SPI_SETDESKWALLPAPER, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_CAPTION, WS_MAXIMIZEBOX,
+    WS_MINIMIZEBOX, WS_SYSMENU, WS_THICKFRAME,
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -57,7 +60,7 @@ const ORB_HTML: &str = r#"<!doctype html>
   });
   document.body.addEventListener('mousemove', (e) => {
     if (downAt && !dragged &&
-        Math.hypot(e.screenX - downAt[0], e.screenY - downAt[1]) > 6) {
+        Math.hypot(e.screenX - downAt[0], e.screenY - downAt[1]) > 10) {
       dragged = true;
       window.ipc.postMessage('drag-orb');
     }
@@ -193,6 +196,28 @@ fn restore_wallpaper() {
     }
 }
 
+/// tao's frameless windows keep an invisible Win32 resize frame that offsets
+/// the webview ~8px (white sliver + shifted content). Strip the frame styles
+/// for real, then nudge the size so wry re-fits the webview to the new
+/// client area.
+fn strip_frame(window: &Window, w: f64, h: f64) {
+    unsafe {
+        let hwnd = window.hwnd() as HWND;
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        let cleared = style
+            & !(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU);
+        SetWindowLongW(hwnd, GWL_STYLE, cleared as i32);
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            0, 0, 0, 0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+    // Re-assert the size so the client rect (and the wry child) realign.
+    window.set_inner_size(LogicalSize::new(w, h));
+}
+
 fn round_region(window: &Window, w: f64, h: f64, radius: f64) {
     let sf = window.scale_factor();
     unsafe {
@@ -289,6 +314,7 @@ fn main() {
         .with_window_icon(app_icon())
         .build(&event_loop)
         .expect("overlay window");
+    strip_frame(&overlay, FULL.0, FULL.1);
     round_region(&overlay, FULL.0, FULL.1, 18.0);
     let overlay_id = overlay.id();
     let p_overlay = proxy.clone();
@@ -318,6 +344,7 @@ fn main() {
         .with_window_icon(app_icon())
         .build(&event_loop)
         .expect("orb window");
+    strip_frame(&orb, ORB_SIZE, ORB_SIZE);
     circle_region(&orb, ORB_SIZE);
     let p_orb = proxy.clone();
     let _orb_view = WebViewBuilder::new()
@@ -337,7 +364,6 @@ fn main() {
         orb.set_always_on_top(true);
     };
 
-    let mut overlay_visible = false;
     let mut mini = false;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -359,9 +385,14 @@ fn main() {
             }
         }
 
-        let mut do_toggle = |overlay_visible: &mut bool| {
-            *overlay_visible = !*overlay_visible;
-            if *overlay_visible {
+        // State is derived from reality (window position), so the button can
+        // never get out of sync with what's on screen.
+        let do_toggle = || {
+            let hidden = overlay
+                .outer_position()
+                .map(|p| p.x < -2000)
+                .unwrap_or(true);
+            if hidden {
                 overlay.set_outer_position(LogicalPosition::new(overlay_x, overlay_y));
                 overlay.set_focus();
                 raise_orb(&orb);
@@ -372,14 +403,13 @@ fn main() {
         };
 
         if toggle {
-            do_toggle(&mut overlay_visible);
+            do_toggle();
         }
 
         match event {
             Event::WindowEvent { window_id, event: WindowEvent::CloseRequested, .. } => {
                 if window_id == overlay_id {
                     overlay.set_outer_position(LogicalPosition::new(PARK.0, PARK.1));
-                    overlay_visible = false;
                 }
                 // chat head has no close button; exiting is tray-only
             }
@@ -389,10 +419,9 @@ fn main() {
                 }
             }
             Event::UserEvent(ue) => match ue {
-                UserEvent::Toggle => do_toggle(&mut overlay_visible),
+                UserEvent::Toggle => do_toggle(),
                 UserEvent::HideOverlay => {
                     overlay.set_outer_position(LogicalPosition::new(PARK.0, PARK.1));
-                    overlay_visible = false;
                 }
                 UserEvent::MiniToggle => {
                     mini = !mini;
