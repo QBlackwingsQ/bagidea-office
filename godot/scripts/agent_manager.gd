@@ -24,6 +24,7 @@ var _pos_busy := false
 
 func _ready() -> void:
 	_spawn_ceo.call_deferred()
+	_main_wander_loop()
 	# Live positions → daemon → overlay map (1 Hz, fire-and-forget).
 	_pos_req = HTTPRequest.new()
 	add_child(_pos_req)
@@ -62,12 +63,16 @@ func _set_state(a: Dictionary, state: String) -> void:
 	a.state = state
 	a.node.set_state(state)
 
-## Pixel FX beside an agent's head — to the RIGHT of the body so the HUD
-## nameplate (drawn over the head) never covers it. Bursts that wrap the
-## whole body pass x = 0. (Node origin floats at y 0.86.)
-func _fx(a: Dictionary, name: String, y := 2.0, loops := 1, ppm := 0.045, x := 0.8) -> void:
-	if a.has("node") and is_instance_valid(a.node):
-		Fx.spawn(a.node, name, Vector3(x, y - 0.86, 0), ppm, loops)
+## Symbol FX (check / X / alert / thumbs / notes) play on the HUD layer —
+## ABOVE the nameplate that was eating the in-world version. Body bursts
+## (sparkle, light, warp, heart) stay in the 3D world via Fx.spawn.
+func _fx(a: Dictionary, name: String, loops := 1) -> void:
+	if not (a.has("node") and is_instance_valid(a.node)):
+		return
+	var hud := get_node_or_null("../Hud")
+	var info: Array = Fx.strip(name)
+	if hud and not info.is_empty():
+		hud.fx(a.node, info[0], info[1], loops)
 
 # ---------------------------------------------------------------- events
 
@@ -119,7 +124,7 @@ func handle(evt: Dictionary) -> void:
 			bed_pool.append(a.bed)  # check out of the bunk
 			a.bed = ""
 		a.node.set_status("good morning ☀")
-		_fx(a, "sparkle", 1.5, 1, 0.045, 0.0)  # wraps the body
+		Fx.spawn(a.node, "sparkle", Vector3(0, 0.6, 0), 0.045)  # wraps the body
 		_clear_status_later(a, 3.0)
 	match type:
 		"agent.online":
@@ -155,7 +160,7 @@ func handle(evt: Dictionary) -> void:
 		"perm.requested":
 			_set_state(a, "blocked")
 			a.node.set_status("needs approval ⚠")
-			_fx(a, "alert", 2.0, 3)
+			_fx(a, "alert", 3)
 			_walk(a.node, "sec_window")
 			_pulse_security()
 			if not theatrical:
@@ -195,14 +200,14 @@ func handle(evt: Dictionary) -> void:
 		"skill.created":
 			# Hermes moment: the agent distilled its work into a new skill.
 			a.node.set_status("📚 learned: " + str(evt.get("skill", "")))
-			_fx(a, "light_burst", 1.3, 1, 0.045, 0.0)  # wraps the body
+			Fx.spawn(a.node, "light_burst", Vector3(0, 0.45, 0), 0.045)  # wraps the body
 			_clear_status_later(a, 6.0)
 		"chat.message":
 			# Speech bubble: first line of what the agent actually said.
 			var text := str(evt.get("text", "")).split("\n")[0]
 			a.node.set_status("💬 " + text.left(28))
 			if not evt.get("replay", false):
-				_fx(a, "music", 2.0, 1, 0.028)
+				_fx(a, "music")
 			# In a meeting, words land on the whiteboard (truth, not theater).
 			if a.state == "meeting":
 				world.whiteboard_add(id, text)
@@ -413,6 +418,19 @@ func _ceo_loop() -> void:
 		if not is_instance_valid(ceo):
 			return
 		_walk(ceo, ["pace_a", "pace_b", "exec_c"].pick_random())
+
+## The Director doesn't hover over the CEO all day: when idle he makes the
+## rounds — recreation room, cafe, a look over the ops floor, server room.
+func _main_wander_loop() -> void:
+	var rounds: Array[String] = ["rec_c", "cafe_c", "ops_c", "lobby_c",
+		"server_c", "meeting_c", "rec_s2", "exec_c", "cafe_s1"]
+	while is_inside_tree():
+		await get_tree().create_timer(randf_range(12.0, 26.0)).timeout
+		if not agents.has("main"):
+			continue
+		var a: Dictionary = agents["main"]
+		if a.state == "idle" and is_instance_valid(a.node):
+			_walk(a.node, rounds.pick_random())
 
 func _pulse_security() -> void:
 	var l: OmniLight3D = world.sec_light

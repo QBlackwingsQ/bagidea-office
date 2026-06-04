@@ -14,6 +14,7 @@ const STATE_COLORS := {
 	"blocked": Color(1.0, 0.72, 0.32),
 	"offline": Color(0.6, 0.63, 0.72),
 }
+var _fx_list: Array = []  # {s: Sprite2D, agent, frames, loops, t}
 var _wb_panel: PanelContainer
 var _wb_box: VBoxContainer
 var _wb_lines: Array[String] = []
@@ -146,6 +147,41 @@ func unregister(agent: Node3D) -> void:
 		_plates[agent].root.queue_free()
 		_plates.erase(agent)
 
+# ---------------------------------------------------------------- pixel fx
+
+## Event FX on the HUD itself — drawn ABOVE the nameplates (z 20 vs 5),
+## floating over the plate while tracking the character. 15 fps strips.
+func fx(agent: Node3D, tex: Texture2D, frames: int, loops := 1) -> void:
+	var s := Sprite2D.new()
+	s.texture = tex
+	s.hframes = frames
+	s.frame = 0
+	s.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	s.z_index = 20
+	add_child(s)
+	_fx_list.append({"s": s, "agent": agent, "frames": frames, "loops": loops, "t": 0.0})
+
+func _track_fx(delta: float, cam: Camera3D) -> void:
+	for i in range(_fx_list.size() - 1, -1, -1):
+		var f: Dictionary = _fx_list[i]
+		f.t += delta
+		var idx := int(f.t * 15.0)
+		if idx >= f.frames * f.loops or not is_instance_valid(f.agent):
+			f.s.queue_free()
+			_fx_list.remove_at(i)
+			continue
+		f.s.frame = idx % f.frames
+		var wp: Vector3 = f.agent.global_position + Vector3(0, 1.0, 0)
+		if cam.is_position_behind(wp):
+			f.s.visible = false
+			continue
+		f.s.visible = true
+		var dist := cam.global_position.distance_to(wp)
+		var sc: float = clampf(44.0 / dist, 0.62, 1.2) * 1.9
+		f.s.scale = Vector2(sc, sc)
+		# Hover just above the nameplate.
+		f.s.position = cam.unproject_position(wp) - Vector2(0, 74.0 * sc * 0.55)
+
 # ---------------------------------------------------------------- whiteboard
 
 func _build_whiteboard() -> void:
@@ -237,6 +273,8 @@ func _process(_delta: float) -> void:
 	for agent in dead:
 		_plates[agent].root.queue_free()
 		_plates.erase(agent)
+
+	_track_fx(_delta, cam)
 
 	if _wb_panel.visible:
 		var sp2 := cam.unproject_position(Vector3(13, 2.4, -0.5))

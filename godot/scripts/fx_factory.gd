@@ -24,6 +24,13 @@ static func _tex(name: String) -> ImageTexture:
 	_cache[name] = tex
 	return tex
 
+## Texture + frame count for HUD-layer playback (2D, above nameplates).
+static func strip(name: String) -> Array:
+	var tex := _tex(name)
+	if tex == null:
+		return []
+	return [tex, int(float(tex.get_width()) / float(tex.get_height()))]
+
 ## Spawn an effect as a child of `parent` at a local offset. Frame size is
 ## square, so frames = width / height. pixel size 0.02 → a 40px symbol
 ## reads ~0.8 m in world.
