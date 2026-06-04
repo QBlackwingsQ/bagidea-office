@@ -8,8 +8,8 @@ shader_type canvas_item;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform vec2 focus_center = vec2(0.5, 0.47);
-uniform float focus_radius : hint_range(0.0, 1.0) = 0.34; // fully sharp inside
-uniform float focus_soft : hint_range(0.05, 1.0) = 0.45;  // falloff width
+uniform float focus_radius : hint_range(0.0, 1.0) = 0.44; // fully sharp inside
+uniform float focus_soft : hint_range(0.05, 1.0) = 0.40;  // falloff width
 uniform float blur_max : hint_range(0.0, 5.0) = 2.4;      // mip levels at edge
 uniform float vignette : hint_range(0.0, 1.0) = 0.45;
 uniform float edge_desat : hint_range(0.0, 1.0) = 0.35;
