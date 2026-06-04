@@ -543,10 +543,10 @@ func _build_geometry() -> void:
 	totem_mat = _mat(Color(0.15, 0.2, 0.25), 0.3, Color(1.0, 0.25, 0.2), 2.2)
 	_cyl(Vector3(-2.6, 0.06, 3), 0.55, 0.12, cap)
 	_cyl(Vector3(-2.6, 1.26, 3), 0.35, 2.4, totem_mat)
-	# Brand (never on the floor): horizontal logo on the ops north wall,
+	# Brand (never on the floor): rooftop billboard angled at the camera,
 	# camera-facing sign on the lobby entrance lintel, box logo on the
 	# reception desk front.
-	_logo("res://assets/brand/logo.png", Vector3(0.9, 3.12, -9.79), Vector2(3.4, 0.51), 0.0)
+	_billboard(Vector3(3, 4.45, -9.8), -42.0)
 	_logo("res://assets/brand/logo.png", Vector3(-1, 2.78, 5.72), Vector2(2.1, 0.31), 0.0)
 	_logo("res://assets/brand/logo_box.png", Vector3(-4.2, 0.55, 4.16), Vector2(0.62, 0.6), 0.0)
 	_box(Vector3(-4.2, 0.5, 3.8), Vector3(1.8, 1.0, 0.7), dark_wood)           # reception
@@ -718,14 +718,12 @@ func _build_geometry() -> void:
 	add_child(dust)
 	dust.position = Vector3(0, 2, -5)
 
-## Branded quad: textured, gently emissive so it reads day and night.
-func _logo(path: String, pos: Vector3, size: Vector2, rot_y: float) -> void:
+func _logo_mesh(path: String, size: Vector2) -> MeshInstance3D:
 	var img := Image.load_from_file(ProjectSettings.globalize_path(path))
 	if img == null:
-		return
-	var tex := ImageTexture.create_from_image(img)
+		return null
 	var m := StandardMaterial3D.new()
-	m.albedo_texture = tex
+	m.albedo_texture = ImageTexture.create_from_image(img)
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	# Unshaded: the brand ignores scene lighting entirely — always crisp.
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -735,9 +733,47 @@ func _logo(path: String, pos: Vector3, size: Vector2, rot_y: float) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = quad
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
+
+## Branded quad: textured, gently emissive so it reads day and night.
+func _logo(path: String, pos: Vector3, size: Vector2, rot_y: float) -> void:
+	var mi := _logo_mesh(path, size)
+	if mi == null:
+		return
 	add_child(mi)
 	mi.position = pos
 	mi.rotation_degrees.y = rot_y
+
+## Rooftop company billboard: framed panel on posts, tilted to face the
+## camera dead-on (a flat wall decal is unreadable from the -45° camera).
+func _billboard(center: Vector3, tilt_deg: float) -> void:
+	var rig := Node3D.new()
+	add_child(rig)
+	rig.position = center
+	rig.rotation_degrees.x = tilt_deg
+
+	var frame := CSGBox3D.new()
+	frame.size = Vector3(7.2, 1.95, 0.1)
+	frame.material = _mat(Color(0.55, 0.56, 0.6), 0.35)
+	rig.add_child(frame)
+	frame.position = Vector3(0, 0, -0.04)
+
+	var panel := CSGBox3D.new()
+	panel.size = Vector3(6.85, 1.6, 0.1)
+	panel.material = _mat(Color(0.05, 0.07, 0.12), 0.4)
+	rig.add_child(panel)
+	panel.position = Vector3(0, 0, 0.02)
+
+	# logo.png is 1380x207 → keep ratio, leave padding inside the panel
+	var logo := _logo_mesh("res://assets/brand/logo.png", Vector2(6.1, 0.92))
+	if logo:
+		rig.add_child(logo)
+		logo.position = Vector3(0, 0, 0.085)
+
+	# support posts down to the wall top
+	var post_mat := _mat(Color(0.3, 0.31, 0.34), 0.5)
+	_box(Vector3(center.x - 2.6, center.y - 0.9, -10.05), Vector3(0.16, 1.1, 0.16), post_mat)
+	_box(Vector3(center.x + 2.6, center.y - 0.9, -10.05), Vector3(0.16, 1.1, 0.16), post_mat)
 
 func _plant(pos: Vector3) -> void:
 	var pot := CSGCylinder3D.new()
