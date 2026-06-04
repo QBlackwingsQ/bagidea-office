@@ -8,6 +8,7 @@ extends Node3D
 const BEAM_SHADER := preload("res://shaders/light_beam.gdshader")
 const SCREEN_SHADER := preload("res://shaders/screen_code.gdshader")
 const FLOOR_SHADER := preload("res://shaders/floor_planks.gdshader")
+const GRASS_SHADER := preload("res://shaders/grass_blade.gdshader")
 
 const WP := {
 	"exec_c": Vector3(-6, 0.86, -6),
@@ -503,23 +504,11 @@ func _build_geometry() -> void:
 		for s in [[-1.4, 3.2], [3.9, 4.2]]:
 			_partition(Vector3(4, 0, s[0]), Vector3(0.22, 0, s[1]), glass, wall, cap)
 
-	# ---- Sky + city skyline + shadows-only ceiling
+	# ---- Sky + countryside (grass field, mountains, trees) + shadow ceiling
 	sky_mat = _mat(Color(0.55, 0.75, 1.0), 1.0, Color(0.55, 0.72, 1.0), 1.6)
 	sky_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_box(Vector3(0, 5, -14.5), Vector3(48, 18, 0.1), sky_mat, 0)
-	var bldg := _mat(Color(0.1, 0.12, 0.2), 0.9)
-	var bldg_rng := RandomNumberGenerator.new()
-	bldg_rng.seed = 21
-	var bx := -20.0
-	while bx < 20.0:
-		var bw := bldg_rng.randf_range(1.4, 2.8)
-		var bh := bldg_rng.randf_range(2.5, 8.0)
-		_box(Vector3(bx + bw / 2.0, bh / 2.0, -11.8 - bldg_rng.randf_range(0.0, 0.8)),
-			Vector3(bw, bh, 0.8), bldg, 0)
-		if bldg_rng.randf() < 0.6:
-			_box(Vector3(bx + bw / 2.0, bh * 0.6, -11.3), Vector3(bw * 0.4, 0.18, 0.05),
-				_mat(Color(0.9, 0.8, 0.5), 0.5, Color(1, 0.85, 0.5), 1.2), 0)
-		bx += bw + bldg_rng.randf_range(0.3, 1.0)
+	_box(Vector3(3, 7, -34.0), Vector3(110, 30, 0.1), sky_mat, 0)
+	_build_countryside()
 	_box(Vector3(3, 3.7, 1.5), Vector3(26.6, 0.2, 23.6), wall, 3)
 
 	# ---- Executive Office
@@ -851,6 +840,104 @@ func _billboard(center: Vector3, tilt_deg: float) -> void:
 	var post_mat := _mat(Color(0.3, 0.31, 0.34), 0.5)
 	_box(Vector3(center.x - 2.6, center.y - 0.9, -10.05), Vector3(0.16, 1.1, 0.16), post_mat)
 	_box(Vector3(center.x + 2.6, center.y - 0.9, -10.05), Vector3(0.16, 1.1, 0.16), post_mat)
+
+## Countryside placeholder set (swappable for real assets later): grass
+## field with wind-swaying blades, low-poly mountains, hills and pine trees.
+func _build_countryside() -> void:
+	# Ground: one big meadow under and around the building.
+	_box(Vector3(3, -0.12, -2), Vector3(110, 0.2, 90), _mat(Color(0.15, 0.34, 0.13), 0.95))
+
+	# Swaying grass: thousands of shader-animated blades via MultiMesh.
+	var grass_mat := ShaderMaterial.new()
+	grass_mat.shader = GRASS_SHADER
+	var blade := QuadMesh.new()
+	blade.size = Vector2(0.16, 0.42)
+	blade.material = grass_mat
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = blade
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var placements: Array[Transform3D] = []
+	while placements.size() < 4200:
+		var px := rng.randf_range(-34.0, 40.0)
+		var pz := rng.randf_range(-22.0, 32.0)
+		# keep the building footprint clear
+		if px > -11.0 and px < 17.0 and pz > -11.0 and pz < 13.8:
+			continue
+		var t := Transform3D(Basis(Vector3.UP, rng.randf_range(0.0, TAU))
+			.scaled(Vector3.ONE * rng.randf_range(0.7, 1.4)), Vector3(px, 0.16, pz))
+		placements.append(t)
+	mm.instance_count = placements.size()
+	for i in placements.size():
+		mm.set_instance_transform(i, placements[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mmi)
+
+	# Mountain range behind the office (north).
+	var rock := _mat(Color(0.32, 0.4, 0.45), 0.95)
+	var rock_far := _mat(Color(0.42, 0.5, 0.6), 1.0)
+	var snow := _mat(Color(0.92, 0.95, 1.0), 0.8)
+	for m in [
+		[Vector3(-18, 0, -26), 14.0, 16.0, false], [Vector3(-2, 0, -30), 18.0, 22.0, true],
+		[Vector3(16, 0, -27), 15.0, 18.0, true], [Vector3(30, 0, -24), 11.0, 13.0, false],
+		[Vector3(-32, 0, -22), 10.0, 12.0, false], [Vector3(7, 0, -24), 9.0, 11.0, false],
+	]:
+		var peak := CSGCylinder3D.new()
+		peak.cone = true
+		peak.radius = m[1]
+		peak.height = m[2]
+		peak.sides = 7
+		peak.material = rock_far if m[0].z < -27.0 else rock
+		add_child(peak)
+		peak.position = m[0] + Vector3(0, m[2] * 0.5 - 0.2, 0)
+		if m[3]:
+			var cap := CSGCylinder3D.new()
+			cap.cone = true
+			cap.radius = m[1] * 0.28
+			cap.height = m[2] * 0.3
+			cap.sides = 7
+			cap.material = snow
+			add_child(cap)
+			cap.position = m[0] + Vector3(0, m[2] - cap.height * 0.5 - 0.1, 0)
+
+	# Rolling hills (squashed spheres) at the mountain feet.
+	var hill := _mat(Color(0.18, 0.4, 0.16), 0.95)
+	for hpos in [Vector3(-26, 0, -17), Vector3(8, 0, -18), Vector3(26, 0, -16), Vector3(38, 0, -12)]:
+		var h := CSGSphere3D.new()
+		h.radius = 6.0
+		h.material = hill
+		add_child(h)
+		h.position = hpos
+		h.scale = Vector3(1.6, 0.35, 1.1)
+
+	# Low-poly pines scattered on the meadow (clear of the camera's view path).
+	var trunk_mat := _mat(Color(0.3, 0.2, 0.12), 0.9)
+	var leaf_mat := _mat(Color(0.12, 0.32, 0.12), 0.9)
+	for tp in [
+		Vector3(-20, 0, -13), Vector3(-26, 0, -10), Vector3(-16, 0, -16), Vector3(-30, 0, -4),
+		Vector3(22, 0, -14), Vector3(28, 0, -9), Vector3(34, 0, -16), Vector3(21, 0, -11),
+		Vector3(-24, 0, 4), Vector3(-28, 0, 12), Vector3(-19, 0, 18), Vector3(-26, 0, 24),
+		Vector3(24, 0, 6), Vector3(30, 0, 14), Vector3(22, 0, 22), Vector3(36, 0, 2),
+		Vector3(-14, 0, 28), Vector3(12, 0, 30), Vector3(30, 0, 27),
+	]:
+		var s := 0.8 + fmod(absf(tp.x * 3.7 + tp.z * 1.3), 1.0) * 0.8
+		var trunk := CSGCylinder3D.new()
+		trunk.radius = 0.16 * s
+		trunk.height = 0.9 * s
+		trunk.material = trunk_mat
+		add_child(trunk)
+		trunk.position = tp + Vector3(0, 0.45 * s, 0)
+		var leaf := CSGCylinder3D.new()
+		leaf.cone = true
+		leaf.radius = 0.95 * s
+		leaf.height = 2.4 * s
+		leaf.sides = 6
+		leaf.material = leaf_mat
+		add_child(leaf)
+		leaf.position = tp + Vector3(0, 0.9 * s + 1.2 * s, 0)
 
 func _plant(pos: Vector3) -> void:
 	var pot := CSGCylinder3D.new()

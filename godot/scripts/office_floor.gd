@@ -2,16 +2,18 @@ extends Node3D
 ## Root controller for the office floor: real-time day cycle, screenshot
 ## automation (--shot) and wallpaper mode (--wallpaper).
 
-## hour → [sun pitch°, sun energy, sun color, sky color] — lerped between keys.
+## hour → [sun pitch°, sun energy, sun color, sky color, ambient energy].
+## Ambient must follow the clock too — light surroundings (grass, mountains)
+## glow unnaturally at night otherwise.
 const DAY_KEYS := [
-	[0.0,  -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.05, 0.07, 0.16)],
-	[6.0,  -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.05, 0.07, 0.16)],
-	[7.5,  -24.0, 2.1,  Color(1.0, 0.74, 0.5),  Color(0.85, 0.62, 0.45)],
-	[10.0, -42.0, 3.0,  Color(1.0, 0.93, 0.82), Color(0.55, 0.75, 1.0)],
-	[15.0, -46.0, 3.0,  Color(1.0, 0.95, 0.85), Color(0.55, 0.75, 1.0)],
-	[18.0, -26.0, 2.2,  Color(1.0, 0.66, 0.4),  Color(0.9, 0.55, 0.35)],
-	[19.5, -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.07, 0.09, 0.2)],
-	[24.0, -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.05, 0.07, 0.16)],
+	[0.0,  -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.05, 0.07, 0.16), 0.8],
+	[6.0,  -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.05, 0.07, 0.16), 0.8],
+	[7.5,  -24.0, 2.1,  Color(1.0, 0.74, 0.5),  Color(0.85, 0.62, 0.45), 1.4],
+	[10.0, -42.0, 3.0,  Color(1.0, 0.93, 0.82), Color(0.55, 0.75, 1.0),  2.0],
+	[15.0, -46.0, 3.0,  Color(1.0, 0.95, 0.85), Color(0.55, 0.75, 1.0),  2.0],
+	[18.0, -26.0, 2.2,  Color(1.0, 0.66, 0.4),  Color(0.9, 0.55, 0.35),  1.5],
+	[19.5, -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.07, 0.09, 0.2),  0.8],
+	[24.0, -40.0, 0.22, Color(0.5, 0.62, 1.0),  Color(0.05, 0.07, 0.16), 0.8],
 ]
 
 var _day_timer := 0.0
@@ -77,6 +79,7 @@ func _apply_daylight() -> void:
 	$Sun.rotation_degrees = Vector3(pitch, 150.0, 0.0)
 	$Sun.light_energy = energy
 	$Sun.light_color = sun_col
+	$WorldEnvironment.environment.ambient_light_energy = lerpf(a[5], b[5], f)
 	var world: Node3D = $World
 	if world.sky_mat:
 		world.sky_mat.emission = sky_col
