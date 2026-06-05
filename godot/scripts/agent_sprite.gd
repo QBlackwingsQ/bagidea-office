@@ -144,9 +144,9 @@ func set_ghost() -> void:
 	# blinked by crossing the cutoff). Real alpha blending for spirits.
 	alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
 	_bob_speed = 1.8
-	modulate = Color(0.66, 0.95, 1.3, 0.0)
+	modulate = Color(0.7, 0.95, 1.25, 0.0)
 	var tw := create_tween()
-	tw.tween_property(self, "modulate:a", 0.45, 0.8)
+	tw.tween_property(self, "modulate:a", 0.65, 0.8)
 	_add_ghost_wisps()
 
 ## The way out: fade to nothing, free.
@@ -204,7 +204,7 @@ func _drop_afterimage() -> void:
 	img.texture_filter = texture_filter
 	img.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	img.layers = 2
-	img.modulate = Color(0.55, 0.85, 1.25, 0.2)
+	img.modulate = Color(0.55, 0.85, 1.25, 0.28)
 	get_parent().add_child(img)
 	img.global_position = global_position
 	var tw := img.create_tween()

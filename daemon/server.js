@@ -284,6 +284,16 @@ function projectDir(id) {
   return p ? p.dir : null;
 }
 
+// How many claude sessions already live in this directory? (claude keeps
+// them under ~/.claude/projects/<path-with-specials-as-dashes>/*.jsonl)
+function claudeSessionCount(dir) {
+  try {
+    const enc = String(dir).replace(/[^a-zA-Z0-9]/g, "-");
+    const p = path.join(require("os").homedir(), ".claude", "projects", enc);
+    return fs.readdirSync(p).filter((f) => f.endsWith(".jsonl")).length;
+  } catch { return 0; }
+}
+
 // Terminal liveness: every spawned window carries BAGIDEA_PROJ_<id> in its
 // command line — one WMI sweep finds the survivors.
 function sweepProjects() {
@@ -1204,12 +1214,25 @@ const server = http.createServer((req, res) => {
 
   } else if (req.method === "POST" && req.url === "/projects") {
     // Register/create a project: name + (place shorthand | full path).
+    // `remove` unregisters from the list only (files untouched);
+    // `removeDisk` REALLY deletes the folder — allowed only for projects
+    // this app created itself.
     readBody(req, (body) => {
       try {
         const p = JSON.parse(body);
         if (p.remove) {
-          projects = projects.filter((x) => x.id !== p.remove);  // unregister only
+          projects = projects.filter((x) => x.id !== p.remove);
           saveProjects();
+          res.writeHead(200); return res.end("ok");
+        }
+        if (p.removeDisk) {
+          const proj = projects.find((x) => x.id === p.removeDisk);
+          if (!proj) { res.writeHead(404); return res.end("unknown project"); }
+          if (!proj.created) { res.writeHead(403); return res.end("not created by this app"); }
+          fs.rmSync(proj.dir, { recursive: true, force: true });
+          projects = projects.filter((x) => x.id !== p.removeDisk);
+          saveProjects();
+          broadcast({ type: "projects.changed" }, false);
           res.writeHead(200); return res.end("ok");
         }
         const name = String(p.name || "").trim().slice(0, 60);
@@ -1218,8 +1241,12 @@ const server = http.createServer((req, res) => {
         if (!dir && p.place && reg.places[p.place])
           dir = path.join(reg.places[p.place], name);
         if (!dir) throw new Error("need place or path");
+        if (projects.some((x) => x.dir.toLowerCase() === dir.toLowerCase()))
+          throw new Error("โปรเจคนี้อยู่ในรายการแล้ว");
+        const existed = fs.existsSync(dir);
         fs.mkdirSync(dir, { recursive: true });
-        const proj = { id: "p" + Date.now(), name, dir, ts: Date.now() };
+        // Only folders WE created may ever be disk-deleted from the UI.
+        const proj = { id: "p" + Date.now(), name, dir, ts: Date.now(), created: !existed };
         projects.push(proj);
         saveProjects();
         broadcast({ type: "projects.changed" }, false);
@@ -1229,26 +1256,61 @@ const server = http.createServer((req, res) => {
     });
 
   } else if (req.method === "POST" && req.url === "/projects/open") {
-    // Pop a real window in the project: claude -c / fresh claude / plain
-    // shell / explorer. The window title carries a liveness marker.
+    // ▶ open = the smart claude entry (no sessions → claude, one → -c,
+    // several → -r so the user picks). 🖥 shell = plain terminal, NOT
+    // counted as "project open" (no liveness marker).
     readBody(req, (body) => {
       try {
-        const { id, mode = "continue" } = JSON.parse(body);
+        const { id, mode = "play" } = JSON.parse(body);
         const dir = projectDir(id);
         if (!dir) { res.writeHead(404); return res.end("unknown project"); }
         if (mode === "folder") {
           spawn("explorer", [dir], { detached: true });
+        } else if (mode === "shell") {
+          spawn("cmd.exe", [`/c start "${path.basename(dir)}" /D "${dir}" cmd /k`],
+            { windowsVerbatimArguments: true, windowsHide: true, detached: true });
         } else {
-          const inner = mode === "shell" ? "" :
-            mode === "new" ? " && claude" : " && claude -c";
+          const n = claudeSessionCount(dir);
+          const cmd = n === 0 ? "claude" : n === 1 ? "claude -c" : "claude -r";
           spawn("cmd.exe",
-            [`/c start "BAGIDEA_PROJ_${id}" /D "${dir}" cmd /k "title BAGIDEA_PROJ_${id}${inner}"`],
+            [`/c start "BAGIDEA_PROJ_${id}" /D "${dir}" cmd /k "title BAGIDEA_PROJ_${id} && ${cmd}"`],
             { windowsVerbatimArguments: true, windowsHide: true, detached: true });
           setTimeout(sweepProjects, 2500);
         }
         res.writeHead(200); res.end("ok");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
+
+  } else if (req.method === "POST" && req.url === "/projects/stop") {
+    // ⏹ close the project's terminal window (and everything inside it).
+    readBody(req, (body) => {
+      try {
+        const { id } = JSON.parse(body);
+        const { execFile } = require("child_process");
+        execFile("powershell", ["-NoProfile", "-Command",
+          `Get-CimInstance Win32_Process -Filter "Name='cmd.exe'" | ` +
+          `Where-Object { $_.CommandLine -match 'BAGIDEA_PROJ_${String(id).replace(/[^\w-]/g, "")}' } | ` +
+          `ForEach-Object { taskkill /PID $_.ProcessId /T /F }`],
+          { timeout: 15000 }, () => sweepProjects());
+        res.writeHead(200); res.end("ok");
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/browse") {
+    // Native folder picker (PowerShell STA FolderBrowserDialog) — the
+    // honest way to let a webview UI pick real directories.
+    {
+      const { execFile } = require("child_process");
+      execFile("powershell", ["-STA", "-NoProfile", "-Command",
+        "Add-Type -AssemblyName System.Windows.Forms; " +
+        "$f = New-Object System.Windows.Forms.FolderBrowserDialog; " +
+        "$f.Description = 'เลือกโฟลเดอร์'; $f.ShowNewFolderButton = $true; " +
+        "$null = $f.ShowDialog(); $f.SelectedPath"],
+        { timeout: 120000, windowsHide: true }, (e, out) => {
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ path: String(out || "").trim() }));
+        });
+    }
 
   } else if (req.method === "POST" && req.url === "/places") {
     readBody(req, (body) => {

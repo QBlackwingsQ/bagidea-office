@@ -496,7 +496,9 @@ func _despawn_ghost(sub: String, ok: bool) -> void:
 		dur = g.walk_to(pts)
 	await get_tree().create_timer(maxf(dur, 0.1) + 0.5).timeout
 	if is_instance_valid(g):
-		Fx.spawn(world, "warp_out", g.position + Vector3(0, -0.2, 0), 0.022)
+		# Merging back deserves a pop too — a softer echo of the split.
+		Burst.spawn(world, g.position, 0.65)
+		Sfx.play("whoosh")
 		g.ghost_dissolve()
 
 func _route_hook_to_ghost(id: String, type: String, evt: Dictionary) -> void:
@@ -800,7 +802,8 @@ func _dissolve_supervisor(g: Sprite3D) -> void:
 		dur = g.walk_to(world.path_between(g.position, agents["main"].node.position))
 	await get_tree().create_timer(maxf(dur, 0.1) + 0.3).timeout
 	if is_instance_valid(g):
-		Fx.spawn(world, "warp_out", g.position + Vector3(0, -0.2, 0), 0.022)
+		Burst.spawn(world, g.position, 0.65)
+		Sfx.play("whoosh")
 		g.ghost_dissolve()
 
 ## A translucent clone of the Director splits off to watch one delegate.

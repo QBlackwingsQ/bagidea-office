@@ -3,10 +3,12 @@ extends Object
 ## Programmatic (flash + shockwave ring + light pillar + soul sparks) in the
 ## Binbun ExplosionFX spirit: additive, punchy, gone in a second.
 
-static func spawn(host: Node3D, pos: Vector3) -> void:
+## scale 1.0 = full split blast; ~0.65 = the softer merge-back pop.
+static func spawn(host: Node3D, pos: Vector3, fx_scale := 1.0) -> void:
 	var root := Node3D.new()
 	host.add_child(root)
 	root.position = pos
+	root.scale = Vector3.ONE * fx_scale
 
 	# Blinding flash.
 	var flash := OmniLight3D.new()
