@@ -913,7 +913,21 @@
 
   // ---- 📡 feed mode (streamer overlay) ------------------------------------
   const feedEl = document.getElementById("feed");
+  let _feedSavedModal = false;
   window.setFeedMode = (on) => {
+    if (on) {
+      // Popups can't haunt the feed strip — tuck them away, remember them.
+      _feedSavedModal = modal.classList.contains("open");
+      modal.classList.remove("open");
+      document.getElementById("sessMenu").classList.remove("open");
+      document.getElementById("dayMenu").classList.remove("open");
+      const fp = document.getElementById("fsPick");
+      if (fp && fp.classList.contains("open")) fsDone(null);
+      setSide(false);
+    } else if (_feedSavedModal) {
+      modal.classList.add("open");  // contents were preserved — welcome back
+      _feedSavedModal = false;
+    }
     document.body.classList.toggle("feedmode", on);
     if (on) feedEl.scrollTop = feedEl.scrollHeight;
   };
@@ -1656,6 +1670,14 @@
                  <div class="winbtn" title="ปิดจริง (จบการทำงานของหน้าต่างนี้)">⏹</div>`
               : `<div class="winbtn" title="Resume — เรียกหน้าต่างเดิมกลับมา">▶</div>
                  <div class="winbtn" title="ปิดจริง (จบการทำงานเบื้องหลัง)">⏹</div>`;
+          // Loud color coding: cyan = AI inside, green = you, both = both.
+          if (p.ai) {
+            row.style.borderLeft = "3px solid #5ec8ff";
+            row.style.background = "rgba(94,200,255,0.07)";
+          } else if (p.open) {
+            row.style.borderLeft = "3px solid #4ade80";
+            row.style.background = "rgba(74,222,128,0.06)";
+          }
           row.innerHTML = `<div class="meta"><b>📁 ${p.name.replace(/</g, "&lt;")}</b>
               <span>${p.dir.replace(/</g, "&lt;")} · ${st.join(" · ")}</span></div>` + main +
             `<div class="winbtn" title="เทอร์มินัลเปล่า (ไม่นับว่าเปิดโปรเจค)">🖥</div>

@@ -298,6 +298,32 @@ function projectDir(id) {
   return p ? p.dir : null;
 }
 
+// Headless claude in an untrusted folder stalls on the trust dialog it can
+// never show. Pre-trust project dirs in ~/.claude.json (same flag the
+// interactive "Yes, I trust this folder" sets).
+function ensureTrusted(dir) {
+  try {
+    const file = path.join(require("os").homedir(), ".claude.json");
+    const j = JSON.parse(fs.readFileSync(file, "utf8"));
+    j.projects = j.projects || {};
+    const key = String(dir).replace(/\\/g, "/").replace(/\/+$/, "");
+    const cur = j.projects[key] || {};
+    if (cur.hasTrustDialogAccepted === true) return;
+    j.projects[key] = { ...cur, hasTrustDialogAccepted: true };
+    fs.writeFileSync(file, JSON.stringify(j, null, 2));
+    console.log("[proj] pre-trusted", key);
+  } catch (e) { console.error("[proj] trust", e.message); }
+}
+
+// Mentioning a registered project by name in chat binds the thread to it:
+// the agent runs INSIDE that directory and the project lights up 🤖.
+function projectFromPrompt(prompt) {
+  const text = String(prompt).toLowerCase();
+  const hits = projects.filter((p) =>
+    p.name.length >= 3 && text.includes(p.name.toLowerCase()));
+  return hits.length === 1 ? hits[0].id : null;
+}
+
 // How many claude sessions already live in this directory? (claude keeps
 // them under ~/.claude/projects/<path-with-specials-as-dashes>/*.jsonl)
 function claudeSessionCount(dir) {
@@ -340,6 +366,8 @@ ${list}
 ${places}
 เมื่อผู้ใช้อ้างถึงโปรเจคเหล่านี้ ให้ทำงานกับไฟล์ใน path ของมันโดยตรงทันที —
 คุณมีอำนาจตัดสินใจเต็มที่ในงานที่ได้รับมอบ ทำเสร็จแล้วต้องสรุปผลให้ผู้สั่งงานชัดเจน.
+สำคัญ: เช็ครายการข้างบนก่อนเสมอ — โปรเจคที่มีอยู่แล้ว "ห้ามลงทะเบียนซ้ำ" และห้ามใช้
+โฟลเดอร์ของ place เป็น path โปรเจคโดยตรง (ระบบจะปฏิเสธ).
 การทดสอบใดๆ (เช่น เว็บ) ให้ใช้วิธีเบื้องหลังก่อนเสมอ (curl / headless / สคริปต์)
 อย่าเปิดหน้าต่างรบกวนผู้ใช้; ถ้าจำเป็นต้องเปิดจริงๆ จนไม่มีทางอื่น ให้รันคำสั่งเปิดตรงๆ
 แล้วระบบ Security จะขอ allow จากผู้ใช้ให้เอง.
@@ -485,11 +513,13 @@ function runClaude(agent, prompt, opts = {}) {
     sess[agent].push(entry);
     isNew = true;
   }
-  // Project binding: a NEW thread adopts the requested project; an existing
-  // thread keeps living in the project it was born in.
-  if (isNew && opts.project && projectDir(opts.project)) entry.proj = opts.project;
+  // Project binding: a requested project claims new threads — and adopts
+  // existing ones that were never bound. Threads keep their home after.
+  if (opts.project && projectDir(opts.project) && (isNew || !entry.proj))
+    entry.proj = opts.project;
   const projId = entry.proj && projectDir(entry.proj) ? entry.proj : null;
   const cwd = projId ? projectDir(projId) : WORKSPACE;
+  if (projId) ensureTrusted(cwd);
   if (projId) {
     projRuns[projId] = (projRuns[projId] || 0) + 1;
     projAgents[projId] = projAgents[projId] || {};
@@ -1057,8 +1087,10 @@ const server = http.createServer((req, res) => {
   } else if (req.method === "POST" && req.url === "/chat") {
     readBody(req, (body) => {
       try {
-        const { agent = "main", prompt, session, project } = JSON.parse(body);
+        const { agent = "main", prompt, session } = JSON.parse(body);
         if (!prompt) throw new Error("no prompt");
+        // Saying a project's name binds the conversation to its directory.
+        const project = projectFromPrompt(prompt);
         // CEO orders route through the Director; talking to the Director
         // directly gives him the same dispatch power. New threads adopt the
         // requested project workspace.
@@ -1302,10 +1334,17 @@ const server = http.createServer((req, res) => {
         if (!dir && p.place && reg.places[p.place])
           dir = path.join(reg.places[p.place], name);
         if (!dir) throw new Error("need place or path");
-        if (projects.some((x) => x.dir.toLowerCase() === dir.toLowerCase()))
-          throw new Error("โปรเจคนี้อยู่ในรายการแล้ว");
+        // Separator-proof normalization for every duplicate check.
+        const norm = (s) => String(s).replace(/\//g, "\\").replace(/\\+$/, "").toLowerCase();
+        if (projects.some((x) => norm(x.dir) === norm(dir)))
+          throw new Error("โปรเจคนี้อยู่ในรายการแล้ว (path ซ้ำ)");
+        if (projects.some((x) => x.name.toLowerCase() === name.toLowerCase()))
+          throw new Error("มีโปรเจคชื่อนี้อยู่แล้ว — ห้ามลงทะเบียนซ้ำ");
+        if (Object.values(reg.places).some((f) => norm(f) === norm(dir)))
+          throw new Error("path นี้คือโฟลเดอร์ของ place — โปรเจคต้องเป็นโฟลเดอร์ย่อยข้างใน");
         const existed = fs.existsSync(dir);
         fs.mkdirSync(dir, { recursive: true });
+        ensureTrusted(dir);
         // Only folders WE created may ever be disk-deleted from the UI.
         const proj = { id: "p" + Date.now(), name, dir, ts: Date.now(), created: !existed };
         projects.push(proj);
@@ -1333,6 +1372,7 @@ const server = http.createServer((req, res) => {
             [`/c start "${path.basename(dir)}" /D "${dir}" conhost.exe powershell -NoLogo -NoExit`],
             { windowsVerbatimArguments: true, windowsHide: true, detached: true });
         } else {
+          ensureTrusted(dir);  // no trust dialog ambush in the new window
           // conhost = a real classic console window we can HIDE and SHOW —
           // that's the tmux trick: hiding keeps claude running untouched.
           // PowerShell host; the marker rides as a harmless comment so the
