@@ -478,10 +478,11 @@
   }
   #modalCard h3 { font-size: 13px; letter-spacing: 2px; color: var(--accent); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
   #modalCard h3 .x { margin-left: auto; }
-  .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
   .tabs .tab {
     font-size: 11.5px; padding: 5px 12px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--line); color: var(--dim); background: rgba(255,255,255,0.03);
+    white-space: nowrap;  /* a tab never wraps into a taller pill */
   }
   .tabs .tab.on { color: var(--accent); border-color: var(--accent); background: rgba(94,200,255,0.1); }
   .arow {
@@ -1392,7 +1393,7 @@
   function openSettings(tab) {
     modal.classList.add("open");
     const T = (t, label) => `<div class="tab ${tab === t ? "on" : ""}" data-t="${t}">${label}</div>`;
-    const tabs = `<div class="tabs">${T("agents", "AGENTS")}${T("roles", "ROLES")}${T("skills", "SKILLS")}${T("tools", "TOOLS")}${T("connect", "🔗 CONNECT")}${T("threads", "THREADS")}</div>`;
+    const tabs = `<div class="tabs">${T("agents", "AGENTS")}${T("roles", "ROLES")}${T("skills", "SKILLS")}${T("tools", "TOOLS")}${T("connect", "CONNECT")}${T("threads", "THREADS")}</div>`;
     let bodyHtml = "";
     if (tab === "agents") {
       bodyHtml = `<div class="switch ${SOUND ? "on" : ""}" id="sndSw">
