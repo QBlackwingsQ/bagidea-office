@@ -6,17 +6,36 @@
 ## คำสั่งทั้งหมด
 
 ```
-bagidea start                 เปิดโปรแกรม (ถ้ายังไม่เปิด)
-bagidea stop                  ปิดทั้งชุด (shell + วอลเปเปอร์ + daemon)
-bagidea status                สถานะระบบ + agents + โปรเจค + ใครทำงานอยู่
-bagidea ask "<ข้อความ>"        ถาม Director และ "รอ" จนได้คำตอบสุดท้าย
-bagidea chat <agent> "<msg>"  ส่งงานให้ agent ระบุตัว (ไม่รอคำตอบ)
-bagidea projects              รายชื่อโปรเจค + สถานะสด
-bagidea open "<ชื่อโปรเจค>"    เปิดหน้าต่างโปรเจค (เหมือนปุ่ม ▶)
-bagidea feed                  สตรีมเหตุการณ์สดในเทอร์มินัล (Ctrl+C ออก)
-bagidea update                อัปเดตเวอร์ชันล่าสุด + รีสตาร์ทให้
-bagidea version               commit ปัจจุบัน
-bagidea help                  หน้านี้
+โปรแกรม
+  bagidea start                 เปิดออฟฟิศ (ถ้ายังไม่เปิด)
+  bagidea stop                  ปิดทั้งชุด
+  bagidea status                ภาพรวมระบบ + agents + โปรเจค + keys
+  bagidea stats                 📊 สถิติงาน 7 วัน + ค่าใช้จ่าย + กราฟ
+  bagidea update                อัปเดต + รีสตาร์ท
+  bagidea version               commit ปัจจุบัน
+
+คุยกับออฟฟิศ
+  bagidea ask "<ข้อความ>"        สั่งงานในนาม CEO และรอคำตอบจบ
+  bagidea chat <agent> "<msg>"  ส่งงานให้ agent ระบุตัว (ไม่รอ)
+  bagidea feed                  ดูเหตุการณ์สด (Ctrl+C ออก)
+  bagidea note "<ข้อความ>"       แปะโน้ตบนกระดานกลาง
+
+ทีมและงาน
+  bagidea agents                รายชื่อพนักงาน + เสียง + เครื่องมือ
+  bagidea projects              รายชื่อโปรเจค + ใครทำงาน
+  bagidea open "<โปรเจค>"        เปิดหน้าต่างโปรเจค (= ▶)
+  bagidea memory <agent>        อ่านสมุดความจำของ agent
+  bagidea office                อ่าน OFFICE.md (ข้อมูลกลาง)
+
+AI features (ใช้ main API keys)
+  bagidea say "<ข้อความ>" [preset]  ให้เสียง TTS พูด (default sunny)
+  bagidea image "<prompt>"          สร้างภาพ AI → ได้ path
+  bagidea keys                      ดู key ที่ตั้งไว้ (ไม่โชว์ค่า)
+  bagidea channels                  สถานะ Telegram / Discord / LINE
+
+ซ่อมบำรุง
+  bagidea fixmic                รีเซ็ตแผงไมค์ Windows ที่ค้าง
+  bagidea help                  หน้านี้
 ```
 
 ## ตัวอย่างการใช้จริง

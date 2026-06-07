@@ -50,6 +50,17 @@ Not a dashboard. Not a chat window. A **world** that renders the true state of y
 - **Mission Control board** in-world: one card per running task, colored by state; lobby status totem shows daemon connectivity (truth, not decoration)
 - Branded boot: a transparent floating logo splash + a pulsing circular logo card — never a black box
 
+### 🎤 Voice, channels, memory & media (2026-06)
+- **Voice in / out**: hold-to-record in the webview → **OpenAI Whisper / Gemini** transcription (no Windows dictation panel); **F6** speaks a command straight to the CEO; agents can be given **anime-style Gemini TTS voices** (8 presets, per-agent, gimmick `SPEAK:` announcements); **📞 realtime voice chat** bridges your mic to **Gemini Live** with the office's own knowledge in context
+- **Channels**: connect **Telegram / Discord / LINE** — messages enter the CEO flow, the Director answers back on the same channel
+- **Hermes-style memory** (token-lean): shared `workspace/OFFICE.md` + per-agent `workspace/memory/<id>.md`, distilled automatically after real work; fresh sessions get pointers + a short tail, full recall on demand
+- **Main API keys + feature gates**: `OPENAI_API_KEY` / `GEMINI_API_KEY` are first-class — voice/TTS/image/realtime grey out with guidance until set; an extra-key vault feeds agents' own env
+- **Attachments & media**: paperclip / drag-drop upload; chat renders images, video, audio inline; agents produce images via the `/gen/image` **system tool** and they appear automatically
+- **Social office**: idle agents hang out (banter + real AI-to-AI chats) and can pitch **project proposals** you approve into existence
+- **📊 Dashboard** (OFFICE OPS → STATS): runs / cost / 7-day chart / busiest agents / uptime / channels / key status
+- **`bagidea` CLI v2**: `ask`, `status`, `stats`, `feed`, `say`, `image`, `agents`, `projects`, `channels`, and more
+- **Living chat head**: a drifting gradient ring that spins amber while agents work
+
 ### 🔌 Event daemon (Layer 0 — Node.js, zero dependencies)
 - WebSocket event hub — the Godot world and the overlay UI subscribe to one stream
 - **Event journal** (`journal.jsonl`) with replay on connect: restart anything, state comes back
@@ -378,6 +389,16 @@ bagidea version               current build
 | `POST /channels/line/webhook` | LINE Messaging API webhook target |
 | `POST /chat` with `wait: true` | hold the response until the run finishes (the CLI's `ask`) |
 | `POST /update` | run the updater (human-UI-only) |
+| `POST /voice/transcribe` (WAV body) | speech → text (Whisper / Gemini) |
+| `POST /tts` `{text, preset\|agent}` · `GET /tts/presets` | agent text-to-speech |
+| `WS /live?agent=` | realtime voice relay to Gemini Live |
+| `POST /gen/image` `{prompt}` | AI image → PNG in uploads |
+| `POST /upload` (file body) · `GET /uploads/…` · `GET /media?p=` | attachments + media render |
+| `POST /registry/key` `{name,value\|remove}` | main + extra API keys |
+| `GET /features` · `GET /stats` | feature gates · dashboard data |
+| `GET/POST /office-md` | shared OFFICE.md memory |
+| `GET /proposals` · `POST /proposals/respond` | team project pitches |
+| `POST /registry/tts` · `/registry/social` | voice + social toggles |
 | `GET /health` | liveness (`{clients, pendingPerms, wt}`) |
 
 ## Event protocol (OEP)
@@ -423,6 +444,7 @@ remain (FSR scale, grass density, cinema pass) if you want it leaner.
 | [เริ่มต้นใช้งาน](docs/guide/getting-started.md) | ติดตั้ง · เปิดครั้งแรก · แชทแรกกับ Director |
 | [Agents & Skills](docs/guide/agents.md) | จ้างพนักงาน · persona · skills/tools · Security Center |
 | [Projects](docs/guide/projects.md) | places · สร้าง/เปิด/ดูงานสด/ลบโปรเจค |
+| [AI features](docs/guide/ai-features.md) | main keys · เสียง/TTS/realtime · รูปภาพ · ความจำ · social |
 | [เสียง & Feed mode](docs/guide/voice-feed.md) | F6 push-to-talk · feed mode · NOW WORKING |
 | [Office Ops](docs/guide/office-ops.md) | งานตั้งเวลา · ปฏิทิน · กระดานโน้ต · ผังองค์กร |
 | [Channels](docs/guide/channels.md) | ต่อ Telegram / Discord / LINE ทีละขั้น |
@@ -458,6 +480,11 @@ this makes them employable"*).
 - [x] 📡 Feed mode, NOW-WORKING strip, Office Ops (jobs/calendar/notes/org)
 - [x] **Channels** — Telegram / Discord / LINE → the Director
 - [x] API key vault, `bagidea` CLI, one-shot installer + self-updater
+- [x] Voice engine v2 (Whisper/Gemini), agent TTS voices, **realtime voice** (Gemini Live)
+- [x] Channels (Telegram/Discord/LINE) → CEO flow
+- [x] Hermes-style memory (OFFICE.md + per-agent), main keys + feature gates
+- [x] Attachments & inline media, AI image generation system tool
+- [x] Social office + project proposals, dashboard, CLI v2
 - [ ] Wake word; channel round-trip reports (delegate results back to the channel)
 - [ ] macOS/Linux wallpaper backends
 - [ ] Signed binary releases (skip the Rust build on install)
