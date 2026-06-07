@@ -1104,6 +1104,85 @@ function runSub(parentId, subId, taskText, entry, onDone) {
   child.on("close", () => finish(!!lastText));
 }
 
+// ---------------------------------------------------------------- voice
+// Speech-to-text for the office mic: the overlay records WAV in the
+// webview, ships it here, and the vault's keys do the listening —
+// OpenAI Whisper first, Gemini as the automatic fallback. No Windows
+// dictation panel anywhere in the chain.
+function voiceTranscribe(buf) {
+  return new Promise((resolve, reject) => {
+    const keys = reg.apiKeys || {};
+    const oa = keys.OPENAI_API_KEY || keys.OPENAI;
+    const gm = keys.GEMINI_API_KEY || keys.GEMINI;
+    const https = require("https");
+
+    const tryGemini = (err) => {
+      if (!gm) {
+        return reject(err || new Error(
+          "ยังไม่มี API key สำหรับถอดเสียง — เพิ่ม OPENAI_API_KEY หรือ GEMINI_API_KEY ใน ⚙ CONNECT"));
+      }
+      const body = JSON.stringify({
+        contents: [{ parts: [
+          { text: "Transcribe this audio EXACTLY as spoken (likely Thai or English). " +
+            "Reply with ONLY the transcription text — no quotes, no commentary." },
+          { inline_data: { mime_type: "audio/wav", data: buf.toString("base64") } },
+        ] }],
+      });
+      const rq = https.request({
+        method: "POST", host: "generativelanguage.googleapis.com",
+        path: "/v1beta/models/gemini-2.0-flash:generateContent?key=" + gm,
+        headers: { "content-type": "application/json",
+          "content-length": Buffer.byteLength(body) },
+      }, (rs) => {
+        let o = "";
+        rs.on("data", (c) => (o += c));
+        rs.on("end", () => {
+          try {
+            const j = JSON.parse(o);
+            const t = j.candidates && j.candidates[0] &&
+              j.candidates[0].content.parts.map((p) => p.text || "").join("").trim();
+            if (t) resolve(t);
+            else reject(new Error((j.error && j.error.message) || "gemini: empty"));
+          } catch (e) { reject(e); }
+        });
+      });
+      rq.setTimeout(45000, () => rq.destroy(new Error("gemini timeout")));
+      rq.on("error", reject);
+      rq.write(body);
+      rq.end();
+    };
+
+    if (!oa) return tryGemini(null);
+    // OpenAI Whisper — hand-rolled multipart (zero-dep).
+    const B = "----bagidea" + Date.now();
+    const head = Buffer.from(
+      `--${B}\r\ncontent-disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n` +
+      `--${B}\r\ncontent-disposition: form-data; name="file"; filename="audio.wav"\r\n` +
+      `content-type: audio/wav\r\n\r\n`);
+    const body = Buffer.concat([head, buf, Buffer.from(`\r\n--${B}--\r\n`)]);
+    const rq = https.request({
+      method: "POST", host: "api.openai.com", path: "/v1/audio/transcriptions",
+      headers: { authorization: "Bearer " + oa,
+        "content-type": "multipart/form-data; boundary=" + B,
+        "content-length": body.length },
+    }, (rs) => {
+      let o = "";
+      rs.on("data", (c) => (o += c));
+      rs.on("end", () => {
+        try {
+          const j = JSON.parse(o);
+          if (j.text !== undefined) resolve(String(j.text).trim());
+          else tryGemini(new Error((j.error && j.error.message) || "openai: empty"));
+        } catch (e) { tryGemini(e); }
+      });
+    });
+    rq.setTimeout(45000, () => rq.destroy(new Error("openai timeout")));
+    rq.on("error", (e) => tryGemini(e));
+    rq.write(body);
+    rq.end();
+  });
+}
+
 // ---------------------------------------------------------------- updates
 // Quietly compare local HEAD with GitHub main; when they differ the office
 // shows a 🔄 banner and `bagidea update` / POST /update runs the updater.
@@ -2000,6 +2079,27 @@ const server = http.createServer((req, res) => {
         res.writeHead(400);
         res.end("bad json");
       }
+    });
+
+  } else if (req.method === "POST" && req.url === "/voice/transcribe") {
+    // 🎤 WAV in → text out (Whisper / Gemini via the key vault).
+    readBodyRaw(req, (buf) => {
+      if (!buf || buf.length < 4000) {
+        res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+        return res.end("เสียงสั้นเกินไป — กดค้างแล้วพูดให้จบก่อนปล่อย");
+      }
+      if (buf.length > 24 * 1024 * 1024) {
+        res.writeHead(413, { "content-type": "text/plain; charset=utf-8" });
+        return res.end("คลิปยาวเกินไป (จำกัด ~60 วินาที)");
+      }
+      voiceTranscribe(buf).then((text) => {
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ text }));
+      }).catch((e) => {
+        console.error("[voice]", e.message);
+        res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+        res.end(String(e.message || e));
+      });
     });
 
   } else if (req.method === "POST" && req.url === "/update") {

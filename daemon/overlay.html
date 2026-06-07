@@ -355,12 +355,14 @@
     animation: recpulse 1.2s ease-in-out infinite;
   }
   #pttLive.on { display: flex; }
-  #pttLive input {
-    flex: 1; min-width: 0; background: transparent; border: none; outline: none;
-    color: #ffe9ec; font-size: 12.5px; caret-color: #ff8a9a;
+  #pttLive #pttTxt {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: #ffe9ec;
   }
-  #pttLive input::placeholder { color: rgba(255, 200, 210, 0.55); }
   #pttLive .hint { flex: none; font-size: 9.5px; color: rgba(255, 190, 200, 0.6); }
+  #vu { display: flex; gap: 2px; align-items: flex-end; height: 15px; flex: none; }
+  #vu i { width: 3px; height: 3px; background: #ff8a9a; border-radius: 2px;
+    transition: height 0.09s linear; }
   body.feedmode #pttLive { bottom: 14px; }
   @keyframes recpulse {
     0%, 100% { border-color: rgba(255, 90, 110, 0.75); }
@@ -674,11 +676,12 @@
 <div id="feed">
   <div id="feedEmpty">— เงียบสงบ… รอความเคลื่อนไหวในออฟฟิศ —</div>
 </div>
-<!-- 🎤 live dictation pill — the input INSIDE it is the real dictation
-     target: voice typing attaches to a genuine visible box, and what you
-     say appears right here, in every mode -->
-<div id="pttLive">🎤 <input id="pttInp" placeholder="กำลังฟัง… พูดได้เลย" autocomplete="off" spellcheck="false">
-  <span class="hint">F6 = ส่ง</span></div>
+<!-- 🎤 voice pill — recording happens IN the webview (getUserMedia → WAV →
+     Whisper/Gemini via the daemon). The bars are a live VU meter. -->
+<div id="pttLive">🎤
+  <div id="vu"><i></i><i></i><i></i><i></i><i></i></div>
+  <span id="pttTxt">กำลังฟัง…</span>
+  <span class="hint" id="pttHint"></span></div>
 
 <div id="threadBar">🧵 thread: <b id="threadName">ล่าสุด (ต่อเนื่องอัตโนมัติ)</b></div>
 <footer>
@@ -977,70 +980,158 @@
       uiSnd("click");
   }, true);
 
-  // ---- 🎤 push-to-talk: HOLD to dictate, release to stop ------------------
-  // Engine = Windows Voice Typing (offline-capable, speaks Thai): press
-  // opens it over the focused input, release closes it. WebView2 has no
-  // Web Speech backend and we have no STT keys, so this is the honest path.
-  // Click = mic ON (button burns red), click again = OFF. The system's own
-  // dictation panel is parked off-screen by the shell — OUR button is the
-  // mic indicator.
+  // ---- 🎤 voice engine v2: WE record (getUserMedia → WAV in the webview),
+  // the daemon transcribes via Whisper/Gemini from the key vault. No
+  // Windows dictation panel, no focus games, works in any mode.
+  let _rec = null, _vuTimer = null, _recTimeout = null, _voiceBusy = false;
+
+  async function recStart() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const src = ctx.createMediaStreamSource(stream);
+    const proc = ctx.createScriptProcessor(4096, 1, 1);
+    const rec = { ctx, stream, proc, chunks: [], level: 0, rate: ctx.sampleRate };
+    proc.onaudioprocess = (e) => {
+      const d = e.inputBuffer.getChannelData(0);
+      rec.chunks.push(new Float32Array(d));
+      let m = 0;
+      for (let i = 0; i < d.length; i += 8) { const a = Math.abs(d[i]); if (a > m) m = a; }
+      rec.level = m;
+    };
+    src.connect(proc);
+    proc.connect(ctx.destination);
+    _rec = rec;
+    _recTimeout = setTimeout(() => voiceAbort("⏱ เกิน 60 วินาที — ตัดจบอัตโนมัติ"), 60000);
+  }
+
+  function recStop() {
+    const rec = _rec;
+    _rec = null;
+    clearTimeout(_recTimeout);
+    if (!rec) return null;
+    try { rec.proc.disconnect(); } catch {}
+    rec.stream.getTracks().forEach((t) => t.stop());
+    rec.ctx.close();
+    const len = rec.chunks.reduce((a, c) => a + c.length, 0);
+    if (len < rec.rate * 0.25) return null;  // under a quarter second of audio
+    const pcm = new Int16Array(len);
+    let o = 0;
+    for (const c of rec.chunks)
+      for (let i = 0; i < c.length; i++) {
+        const v = Math.max(-1, Math.min(1, c[i]));
+        pcm[o++] = v < 0 ? v * 0x8000 : v * 0x7fff;
+      }
+    const hdr = new ArrayBuffer(44);
+    const dv = new DataView(hdr);
+    const w = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+    w(0, "RIFF"); dv.setUint32(4, 36 + pcm.length * 2, true); w(8, "WAVE");
+    w(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+    dv.setUint16(22, 1, true); dv.setUint32(24, rec.rate, true);
+    dv.setUint32(28, rec.rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+    w(36, "data"); dv.setUint32(40, pcm.length * 2, true);
+    return new Blob([hdr, pcm.buffer], { type: "audio/wav" });
+  }
+
+  function pillShow(txt, hint, live) {
+    const pill = document.getElementById("pttLive");
+    pill.classList.add("on");
+    document.getElementById("pttTxt").textContent = txt;
+    document.getElementById("pttHint").textContent = hint || "";
+    clearInterval(_vuTimer);
+    const bars = [...document.querySelectorAll("#vu i")];
+    if (live) {
+      _vuTimer = setInterval(() => {
+        const lv = _rec ? _rec.level : 0;
+        bars.forEach((b, i) => {
+          const gate = (i + 1) / (bars.length + 1);
+          b.style.height = (3 + Math.max(0, Math.min(1, lv * 3.2 - gate * 0.5)) * 12) + "px";
+        });
+      }, 90);
+    } else bars.forEach((b) => (b.style.height = "3px"));
+  }
+  function pillHide() {
+    clearInterval(_vuTimer);
+    document.getElementById("pttLive").classList.remove("on");
+  }
+
+  async function voiceBegin(hint) {
+    if (_rec || _voiceBusy) return false;
+    try { await recStart(); } catch (e) {
+      pillShow("✗ ไมโครโฟนไม่พร้อม — กดอนุญาตไมค์ให้แอปก่อน", "", false);
+      setTimeout(pillHide, 3500);
+      return false;
+    }
+    pillShow("กำลังฟัง… พูดได้เลย", hint, true);
+    return true;
+  }
+  async function voiceFinish() {
+    const blob = recStop();
+    if (!blob) { pillHide(); return null; }
+    pillShow("⏳ กำลังถอดเสียง…", "", false);
+    _voiceBusy = true;
+    try {
+      const r = await fetch("/voice/transcribe", { method: "POST",
+        headers: { "content-type": "audio/wav" }, body: blob });
+      if (!r.ok) throw new Error(await r.text());
+      const j = await r.json();
+      return (j.text || "").trim() || null;
+    } catch (e) {
+      pillShow("✗ " + String(e.message).slice(0, 90), "", false);
+      setTimeout(pillHide, 3800);
+      return null;
+    } finally { _voiceBusy = false; }
+  }
+  function voiceAbort(msg) {
+    recStop();
+    if (msg) { pillShow(msg, "", false); setTimeout(pillHide, 2500); } else pillHide();
+  }
+
+  // Mic buttons: click = record (red), click again = transcribe → the text
+  // lands in the button's input box for you to review and send yourself.
   function wireMic(btn, input) {
     if (!btn) return;
-    btn.title = "🎤 คลิกเพื่อเปิดไมค์ — คลิกอีกครั้งเพื่อปิด";
-    let on = false;
-    btn.onclick = (e) => {
+    btn.title = "🎤 คลิกเพื่อพูด — คลิกอีกครั้งเพื่อหยุด (ข้อความลงช่องพิมพ์)";
+    btn.onclick = async (e) => {
       e.preventDefault();
-      if (!shellPost) {
-        addChip("🎤 ใช้ได้เฉพาะในแอป BagIdea Office (กด Win+H แทนได้)");
-        return;
+      if (btn.classList.contains("rec")) {
+        btn.classList.remove("rec");
+        const val = await voiceFinish();
+        if (val) {
+          pillHide();
+          if (input) {
+            input.value = (input.value ? input.value + " " : "") + val;
+            input.focus();
+          }
+        }
+      } else if (await voiceBegin("คลิก 🎤 อีกครั้งเพื่อหยุด")) {
+        btn.classList.add("rec");
       }
-      on = !on;
-      btn.classList.toggle("rec", on);
-      if (input) input.focus();
-      shellPost(on ? "micdown" : "micup");
-      // The caret must SIT in the box when Win+H opens (shell waits ~250ms)
-      // — re-assert focus right before, and once more after, so you SEE the
-      // words land where you expect them.
-      if (on && input) setTimeout(() => input.focus(), 180);
-      if (!on && input) input.focus();
     };
   }
   wireMic(document.getElementById("micBtn"), document.getElementById("inp"));
 
-  // ---- global voice-command hotkey (F6): press = mic ON, press again =
-  // mic OFF + the words go STRAIGHT to the Director. Independent from the
-  // mic buttons; works in normal / mini / feed mode alike (dictation lands
-  // in the hidden #pttInp, never in a visible box).
-  function pttLive(on) {
-    document.getElementById("pttLive").classList.toggle("on", on);
-  }
-  window.pttStart = () => {
-    pttLive(true);              // show FIRST — a hidden input can't be focused
-    const box = document.getElementById("pttInp");
-    box.value = "";
-    box.focus();
-    // Re-assert the caret after the shell's focus dance settles, right
-    // before Win+H fires — dictation must attach to THIS box.
-    setTimeout(() => box.focus(), 180);
-  };
-  window.pttEnd = () => {
-    // Voice typing finalizes its last words a beat after closing.
-    setTimeout(async () => {
-      pttLive(false);
-      const box = document.getElementById("pttInp");
-      const val = (box.value || "").trim();
-      box.value = "";
-      if (!val) return;
-      if (document.body.classList.contains("feedmode"))
-        addFeed("ceo", "🎤 " + val, "", "");
-      else addChip("🎤 คำสั่งจากคุณ: " + val.slice(0, 140));
-      // Spoken commands are YOUR words — they go through the CEO seat, so
-      // the Director walks over, takes the order, and reports back in person.
-      await fetch("/chat", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ agent: "ceo", prompt: val }),
-      });
-    }, 750);
+  // ---- global voice-command hotkey (F6): JS owns the toggle — press =
+  // record, press again = transcribe + send STRAIGHT through the CEO seat.
+  // Works identically in normal / mini / feed mode.
+  window.pttToggle = () => {
+    if (_rec) {
+      (async () => {
+        const val = await voiceFinish();
+        if (!val) return;
+        pillShow("🎤 " + val.slice(0, 90), "ส่งแล้ว ✓", false);
+        setTimeout(pillHide, 2400);
+        if (document.body.classList.contains("feedmode"))
+          addFeed("ceo", "🎤 " + val, "", "");
+        else addChip("🎤 คำสั่งจากคุณ: " + val.slice(0, 140));
+        // Spoken commands are YOUR words — through the CEO seat: the
+        // Director walks over, takes the order, reports back in person.
+        await fetch("/chat", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ agent: "ceo", prompt: val }),
+        });
+      })();
+    } else voiceBegin("F6 = หยุดและส่ง");
   };
   // Tell the shell which chord to listen for (persisted per machine).
   function pttKey() {
@@ -1410,7 +1501,7 @@
             <option value="30">ทุก 30 นาที</option>
             <option value="60">ทุก 1 ชั่วโมง</option>
           </select></div>
-        <div class="field" style="margin-top:8px"><label>🎤 HOTKEY สั่งงานด้วยเสียง — กด = เปิดไมค์ · กดอีกครั้ง = ปิด + ส่งหา Director ทันที (ทุกโหมด)</label>
+        <div class="field" style="margin-top:8px"><label>🎤 HOTKEY สั่งงานด้วยเสียง — กด = เริ่มอัด · กดอีกครั้ง = ถอดเสียง + ส่งหา Director (ถอดด้วย Whisper/Gemini จาก key ใน CONNECT)</label>
           <select id="pttSel">
             <option value="f6">F6 (แนะนำ)</option>
             <option value="f7">F7</option>

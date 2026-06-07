@@ -49,8 +49,6 @@ enum UserEvent {
     HideOverlay,
     MiniToggle,
     FeedToggle,
-    MicDown,
-    MicUp,
     SetHotkey(String),
     PttKey(bool), // global voice hotkey: true = pressed, false = released
     WorldReady,
@@ -133,165 +131,6 @@ fn rebind_hotkey(s: &str) {
     }
 }
 
-/// Synthetic key chords. Voice input = push-to-talk over Windows Voice
-/// Typing: press opens Win+H over the focused input (built-in, offline-
-/// capable, speaks Thai — WebView2 has no Web Speech backend and we have
-/// no STT API keys); release sends Esc to close the panel.
-fn send_keys(keys: &[(u16, bool)]) {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_KEYBOARD, KEYEVENTF_KEYUP,
-    };
-    unsafe {
-        let mut inputs: Vec<INPUT> = Vec::with_capacity(keys.len());
-        for (vk, up) in keys {
-            let mut inp: INPUT = std::mem::zeroed();
-            inp.r#type = INPUT_KEYBOARD;
-            inp.Anonymous.ki.wVk = *vk;
-            inp.Anonymous.ki.dwFlags = if *up { KEYEVENTF_KEYUP } else { 0 };
-            inputs.push(inp);
-        }
-        SendInput(inputs.len() as u32, inputs.as_ptr(), std::mem::size_of::<INPUT>() as i32);
-    }
-}
-
-fn send_win_h() {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_LWIN;
-    send_keys(&[(VK_LWIN, false), (0x48, false), (0x48, true), (VK_LWIN, true)]);
-}
-
-/// The Windows Voice Typing panel (TextInputHost) is ugly, floats over
-/// everything, and its window TITLE varies between builds — so the panel is
-/// found by its owning PROCESS, not by name.
-static VOICE_HIDE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-struct VoiceEnumCtx {
-    include_hidden: bool,
-    found: Vec<HWND>,
-}
-
-unsafe extern "system" fn enum_voice_windows(
-    h: HWND,
-    l: windows_sys::Win32::Foundation::LPARAM,
-) -> windows_sys::Win32::Foundation::BOOL {
-    use windows_sys::Win32::Foundation::CloseHandle;
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextW;
-    let ctx = &mut *(l as *mut VoiceEnumCtx);
-    if !ctx.include_hidden && IsWindowVisible(h) == 0 {
-        return 1;
-    }
-    let mut pid = 0u32;
-    GetWindowThreadProcessId(h, &mut pid);
-    if pid == 0 {
-        return 1;
-    }
-    // Primary: the owning process is TextInputHost.exe.
-    let mut is_voice = false;
-    let hp = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-    if !hp.is_null() {
-        let mut buf = [0u16; 512];
-        let mut len = 512u32;
-        if QueryFullProcessImageNameW(hp, 0, buf.as_mut_ptr(), &mut len) != 0 {
-            let path = String::from_utf16_lossy(&buf[..len as usize]).to_lowercase();
-            is_voice = path.ends_with("textinputhost.exe");
-        }
-        CloseHandle(hp);
-    }
-    // Fallback: AppContainer processes can refuse OpenProcess — the panel's
-    // window title is "Windows Input Experience" (verified on this machine).
-    if !is_voice {
-        let mut t = [0u16; 64];
-        let n = GetWindowTextW(h, t.as_mut_ptr(), 64);
-        if n > 0 && String::from_utf16_lossy(&t[..n as usize]) == "Windows Input Experience" {
-            is_voice = true;
-        }
-    }
-    if is_voice {
-        ctx.found.push(h);
-    }
-    1
-}
-
-fn voice_windows(include_hidden: bool) -> Vec<HWND> {
-    let mut ctx = VoiceEnumCtx { include_hidden, found: Vec::new() };
-    unsafe {
-        EnumWindows(Some(enum_voice_windows), &mut ctx as *mut _ as isize);
-    }
-    ctx.found
-}
-
-/// Make one panel window invisible: SW_HIDE plus the layered-alpha-0 trick —
-/// cross-process style changes are allowed for WS_EX_LAYERED, and a fully
-/// transparent window stays "shown" in the host's eyes, so it doesn't fight
-/// back. Recognition keeps running either way.
-unsafe fn cloak_voice_window(h: HWND) {
-    let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
-    SetWindowLongW(h, GWL_EXSTYLE, (ex | WS_EX_LAYERED) as i32);
-    SetLayeredWindowAttributes(h, 0, 0, LWA_ALPHA);
-    ShowWindow(h, SW_HIDE);
-}
-
-/// Undo the cloak for EVERY panel window (hidden ones included) so a manual
-/// Win+H later shows a perfectly normal panel.
-fn voice_uncloak_all() {
-    for h in voice_windows(true) {
-        unsafe {
-            SetLayeredWindowAttributes(h, 0, 255, LWA_ALPHA);
-            let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
-            SetWindowLongW(h, GWL_EXSTYLE, (ex & !WS_EX_LAYERED) as i32);
-        }
-    }
-}
-
-/// Mic ON: keep the system panel invisible for as long as the mic is hot —
-/// OUR red pill/button is the indicator. The panel re-shows itself on state
-/// changes, so a little daemon thread re-cloaks it every 200 ms.
-fn voice_hide(on: bool) {
-    use std::sync::atomic::Ordering;
-    if !on {
-        VOICE_HIDE.store(false, Ordering::SeqCst);
-        return;
-    }
-    if VOICE_HIDE.swap(true, Ordering::SeqCst) {
-        return; // hider already running
-    }
-    std::thread::spawn(|| {
-        use std::sync::atomic::Ordering;
-        while VOICE_HIDE.load(Ordering::SeqCst) {
-            for h in voice_windows(false) {
-                unsafe {
-                    cloak_voice_window(h);
-                }
-            }
-            std::thread::sleep(std::time::Duration::from_millis(200));
-        }
-    });
-}
-
-/// Mic OFF: stop cloaking, toggle the panel closed, restore its looks for
-/// future manual use, and VERIFY — a survivor gets one more toggle and, as
-/// the last resort, a fresh cloak so it can never squat on the screen.
-fn voice_close() {
-    voice_hide(false);
-    std::thread::spawn(|| {
-        std::thread::sleep(std::time::Duration::from_millis(250));
-        send_win_h();
-        std::thread::sleep(std::time::Duration::from_millis(900));
-        voice_uncloak_all();
-        if !voice_windows(false).is_empty() {
-            send_win_h();
-            std::thread::sleep(std::time::Duration::from_millis(800));
-            for h in voice_windows(false) {
-                unsafe {
-                    cloak_voice_window(h);
-                }
-            }
-        }
-    });
-}
-
 /// Debug beacon: stages of the hotkey chain are reported to the daemon —
 /// `ui.ptt` lines in the journal make the whole thing testable end-to-end.
 fn ptt_beacon(stage: &str) {
@@ -301,19 +140,6 @@ fn ptt_beacon(stage: &str) {
             "-H", "content-type: application/json", "-d", &body])
         .creation_flags(CREATE_NO_WINDOW)
         .spawn();
-}
-
-/// Voice typing lands wherever the FOREGROUND focus is — and plain
-/// set_focus loses to the Windows foreground lock when we're a background
-/// process. A synthetic ALT tap counts as "recent user input" and unlocks
-/// SetForegroundWindow (the classic, documented escape hatch).
-fn force_foreground(hwnd: HWND) {
-    use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_MENU;
-    use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
-    send_keys(&[(VK_MENU, false), (VK_MENU, true)]);
-    unsafe {
-        SetForegroundWindow(hwnd);
-    }
 }
 
 const SPLASH_SIZE: f64 = 210.0;
@@ -766,8 +592,6 @@ fn main() {
                 "drag-overlay" => p_overlay.send_event(UserEvent::DragOverlay),
                 "hide" => p_overlay.send_event(UserEvent::HideOverlay),
                 "mini" => p_overlay.send_event(UserEvent::MiniToggle),
-                "micdown" => p_overlay.send_event(UserEvent::MicDown),
-                "micup" => p_overlay.send_event(UserEvent::MicUp),
                 s if s.starts_with("hotkey:") =>
                     p_overlay.send_event(UserEvent::SetHotkey(s[7..].to_string())),
                 _ => Ok(()),
@@ -825,7 +649,6 @@ fn main() {
 
     let mut mini = false;
     let mut feed = false;
-    let mut ptt_on = false;
     let mut last_ptt = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_secs(10))
         .unwrap_or_else(std::time::Instant::now);
@@ -973,60 +796,31 @@ fn main() {
                 }
                 UserEvent::DragOrb => { let _ = orb.drag_window(); }
                 UserEvent::DragOverlay => { let _ = overlay.drag_window(); }
-                UserEvent::MicDown => {
-                    // The user CLICKED the button — our window already owns
-                    // the foreground; a forced ALT-tap here only knocked the
-                    // caret out of the input box (user-reported).
-                    overlay.set_focus();
-                    std::thread::sleep(std::time::Duration::from_millis(250));
-                    send_win_h();
-                    voice_hide(true);   // our red button IS the indicator
-                }
-                UserEvent::MicUp => voice_close(),
                 UserEvent::PttKey(pressed) => {
-                    // Global voice hotkey (F6): press toggles the mic — ON
-                    // dictates a command, OFF sends it to the office.
-                    // Debounce is TIME-based: key auto-repeat arrives well
-                    // under 600 ms apart, and we never depend on Released
-                    // events being delivered.
+                    // Global voice hotkey (F6). The webview owns the whole
+                    // voice session now (it records the mic itself —
+                    // getUserMedia needs no focus, no foreground, no system
+                    // panel). The shell only makes sure the pill is on
+                    // screen and forwards the toggle. Time-based debounce
+                    // absorbs key auto-repeat.
                     if pressed && last_ptt.elapsed().as_millis() >= 600 {
                         last_ptt = std::time::Instant::now();
-                        if !ptt_on {
-                            // ── mic ON: the live pill needs the overlay on
-                            // screen, and dictation needs a real foreground
-                            // box (the hidden landing strip).
-                            ptt_on = true;
-                            let hidden = overlay
-                                .outer_position()
-                                .map(|p| p.x < -2000)
-                                .unwrap_or(true);
-                            if hidden {
-                                let (px, py) = if feed {
-                                    (feed_x, feed_y)
-                                } else {
-                                    (overlay_x, overlay_y)
-                                };
-                                overlay.set_outer_position(LogicalPosition::new(px, py));
-                                raise_orb(&orb);
-                            }
-                            overlay.set_focus();
-                            force_foreground(overlay.hwnd() as HWND);
-                            let _ = overlay_view
-                                .evaluate_script("window.pttStart && pttStart()");
-                            // Let focus land before Win+H opens the panel,
-                            // or it attaches to the wrong window.
-                            std::thread::sleep(std::time::Duration::from_millis(230));
-                            send_win_h();
-                            voice_hide(true);
-                            ptt_beacon("mic-on");
-                        } else {
-                            // ── mic OFF: close + verify, then send to office.
-                            ptt_on = false;
-                            voice_close();
-                            let _ = overlay_view
-                                .evaluate_script("window.pttEnd && pttEnd()");
-                            ptt_beacon("mic-off-send");
+                        let hidden = overlay
+                            .outer_position()
+                            .map(|p| p.x < -2000)
+                            .unwrap_or(true);
+                        if hidden {
+                            let (px, py) = if feed {
+                                (feed_x, feed_y)
+                            } else {
+                                (overlay_x, overlay_y)
+                            };
+                            overlay.set_outer_position(LogicalPosition::new(px, py));
+                            raise_orb(&orb);
                         }
+                        let _ = overlay_view
+                            .evaluate_script("window.pttToggle && pttToggle()");
+                        ptt_beacon("toggle");
                     }
                 }
                 UserEvent::SetHotkey(s) => rebind_hotkey(&s),
