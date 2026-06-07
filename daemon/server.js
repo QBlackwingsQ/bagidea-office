@@ -2658,7 +2658,100 @@ function finishPerm(id, decision, why) {
 }
 
 // WS upgrade — renderers (Godot) and overlays share one stream.
+// Parse masked client→server WS frames (the event stream never needed this;
+// the realtime voice bridge does). Calls cb(opcode, payloadBuffer).
+function makeFrameParser(cb) {
+  let buf = Buffer.alloc(0);
+  return (chunk) => {
+    buf = Buffer.concat([buf, chunk]);
+    for (;;) {
+      if (buf.length < 2) return;
+      const op = buf[0] & 0x0f;
+      const masked = !!(buf[1] & 0x80);
+      let len = buf[1] & 0x7f, off = 2;
+      if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); off = 4; }
+      else if (len === 127) { if (buf.length < 10) return; len = Number(buf.readBigUInt64BE(2)); off = 10; }
+      const need = off + (masked ? 4 : 0) + len;
+      if (buf.length < need) return;
+      let payload;
+      if (masked) {
+        const mask = buf.slice(off, off + 4);
+        payload = Buffer.from(buf.slice(off + 4, off + 4 + len));
+        for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i % 4];
+      } else payload = buf.slice(off, off + len);
+      buf = buf.slice(need);
+      cb(op, payload);
+    }
+  };
+}
+
+// 📞 Realtime voice: bridge the overlay mic ⇄ Gemini Live, with the office's
+// own knowledge in the system prompt and an agent's voice preset.
+function handleLive(req, sock) {
+  const key = req.headers["sec-websocket-key"];
+  if (!key) return sock.destroy();
+  sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n" +
+    "Connection: Upgrade\r\nSec-WebSocket-Accept: " + wsAccept(key) + "\r\n\r\n");
+  const toClient = (obj) => { try { sock.write(wsFrame(JSON.stringify(obj))); } catch {} };
+  const gm = (reg.apiKeys || {}).GEMINI_API_KEY;
+  if (!gm) { toClient({ type: "error", text: "ต้องมี GEMINI_API_KEY (⚙ CONNECT) สำหรับ realtime" }); return; }
+
+  // The voice preset of the agent being talked to (default: first voiced one).
+  const agentId = (new URL(req.url, "http://x").searchParams.get("agent")) || "main";
+  const a = reg.agents[agentId] || {};
+  const presetVoice = { sunny: "Aoede", sweet: "Leda", cool: "Kore", genki: "Zephyr",
+    boyish: "Puck", warm: "Charon", serious: "Fenrir", polite: "Orus" }[a.voice] || "Aoede";
+  const ctxNote = (() => {
+    try { return fs.readFileSync(OFFICE_MD, "utf8").slice(0, 2000); } catch { return ""; }
+  })();
+  const team = teamList();
+
+  const gemini = require("./channels").wsConnect(
+    "generativelanguage.googleapis.com",
+    "/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=" + gm,
+    {
+      onOpen() {
+        gemini.send(JSON.stringify({ setup: {
+          model: "models/gemini-2.5-flash-native-audio-latest",
+          generationConfig: { responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: presetVoice } } } },
+          systemInstruction: { parts: [{ text:
+            `คุณคือ "${a.name || "ผู้ช่วย"}" พนักงานใน BagIdea AI Agents Office คุยกับเจ้าของแบบเป็นกันเอง ` +
+            `ภาษาไทย กระชับ. ทีมงาน:\n${team}\nข้อมูลออฟฟิศ:\n${ctxNote}` }] },
+        } }));
+        toClient({ type: "ready" });
+      },
+      onMsg(raw) {
+        let m; try { m = JSON.parse(raw); } catch { return; }
+        if (m.setupComplete) return toClient({ type: "live-ready" });
+        const parts = m.serverContent && m.serverContent.modelTurn &&
+          m.serverContent.modelTurn.parts;
+        if (parts) for (const p of parts) {
+          if (p.inlineData && p.inlineData.data)
+            toClient({ type: "audio", data: p.inlineData.data });  // 24k PCM base64
+        }
+        if (m.serverContent && m.serverContent.turnComplete) toClient({ type: "turn-done" });
+      },
+      onClose() { toClient({ type: "closed" }); try { sock.end(); } catch {} },
+    });
+
+  // overlay → us: text frames carry {type:'audio', data} (16k PCM base64).
+  const parse = makeFrameParser((op, payload) => {
+    if (op === 8) { try { gemini.close(); } catch {} return; }
+    if (op !== 1) return;
+    let m; try { m = JSON.parse(payload.toString("utf8")); } catch { return; }
+    if (m.type === "audio") {
+      gemini.send(JSON.stringify({ realtimeInput: { mediaChunks: [
+        { mimeType: "audio/pcm;rate=16000", data: m.data }] } }));
+    }
+  });
+  sock.on("data", parse);
+  sock.on("close", () => { try { gemini.close(); } catch {} });
+  sock.on("error", () => { try { gemini.close(); } catch {} });
+}
+
 server.on("upgrade", (req, sock) => {
+  if (req.url.startsWith("/live")) return handleLive(req, sock);
   if (!req.url.startsWith("/ws")) return sock.destroy();
   const key = req.headers["sec-websocket-key"];
   if (!key) return sock.destroy();

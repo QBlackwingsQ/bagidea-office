@@ -83,7 +83,9 @@ function wsConnect(host, path, hooks) {
       if (buf.length < off + len) return;
       const payload = buf.slice(off, off + len);
       buf = buf.slice(off + len);
-      if (op === 1 || op === 0) {
+      if (op === 1 || op === 0 || op === 2) {
+        // text, continuation, or binary — Gemini Live ships JSON in BINARY
+        // frames, so binary payloads decode as utf8 too.
         frag = frag ? Buffer.concat([frag, payload]) : payload;
         if (fin) { const msg = frag.toString("utf8"); frag = null; hooks.onMsg && hooks.onMsg(msg); }
       } else if (op === 9) sendRaw(payload, 10);   // ping → pong
@@ -256,3 +258,6 @@ module.exports = function initChannels(ctx) {
     status: () => ({ ...state }),
   };
 };
+
+// The WSS client doubles as the Gemini Live transport (server.js /live).
+module.exports.wsConnect = wsConnect;
