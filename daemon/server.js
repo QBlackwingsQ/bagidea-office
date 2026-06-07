@@ -55,6 +55,16 @@ function loadReg() {
   reg.agents = reg.agents || {};
   reg.apiKeys = reg.apiKeys || {};      // ENV_NAME → value (injected into runs)
   reg.channels = reg.channels || {};    // telegram/discord/line connector config
+  // MAIN keys power program features (voice, TTS, image…). Canonical names —
+  // migrate the short forms users typed before this distinction existed.
+  if (reg.apiKeys.OPENAI && !reg.apiKeys.OPENAI_API_KEY) {
+    reg.apiKeys.OPENAI_API_KEY = reg.apiKeys.OPENAI;
+    delete reg.apiKeys.OPENAI;
+  }
+  if (reg.apiKeys.GEMINI && !reg.apiKeys.GEMINI_API_KEY) {
+    reg.apiKeys.GEMINI_API_KEY = reg.apiKeys.GEMINI;
+    delete reg.apiKeys.GEMINI;
+  }
   reg.roles = reg.roles || ["Director", "Founder", "Researcher", "Engineer",
     "Designer", "Analyst", "Operator", "Specialist"];
   reg.skills = reg.skills || {};
@@ -79,11 +89,21 @@ loadReg();
 
 // Live (not journaled): registry.json is the persistence; every WS client
 // also gets a fresh snapshot on connect.
+// Which program features the MAIN keys currently unlock — booleans only,
+// never the keys themselves. Rides on roster.sync so the UI gates live.
+function featuresMap() {
+  const k = reg.apiKeys || {};
+  const oa = !!k.OPENAI_API_KEY, gm = !!k.GEMINI_API_KEY;
+  return { openai: oa, gemini: gm,
+    stt: oa || gm, tts: gm, live: gm, image: oa || gm };
+}
+
 function rosterEvt() {
   return { type: "roster.sync", agents: reg.agents, roles: reg.roles,
     tools: reg.tools, builtinTools: BUILTIN_TOOLS, mcp: reg.mcpServers,
     skills: reg.skills, autoSkills: reg.autoSkills !== false,
-    sound: reg.sound !== false, heartbeatMin: Number(reg.heartbeatMin || 0) };
+    sound: reg.sound !== false, heartbeatMin: Number(reg.heartbeatMin || 0),
+    features: featuresMap() };
 }
 
 // Structured persona → one compiled system prompt (editor v2 fields).
@@ -233,6 +253,20 @@ const NOTES_MD = path.join(WORKSPACE, "notes.md");
 function loadJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; }
 }
+// ---- 📊 office stats: per-day run counts + spend, for the dashboard.
+const STATS = path.join(__dirname, "stats.json");
+let stats = loadJson(STATS, {});
+function statBump(field, agent, cost) {
+  const day = new Date().toISOString().slice(0, 10);
+  const d = (stats[day] = stats[day] || { runs: 0, done: 0, failed: 0, cost: 0, agents: {} });
+  if (field) d[field] = (d[field] || 0) + 1;
+  if (agent && field === "runs") d.agents[agent] = (d.agents[agent] || 0) + 1;
+  if (cost) d.cost = Math.round((d.cost + cost) * 10000) / 10000;
+  clearTimeout(statBump._t);
+  statBump._t = setTimeout(() =>
+    fs.writeFile(STATS, JSON.stringify(stats, null, 1), () => {}), 1500);
+}
+
 let jobs = loadJson(JOBS, []);    // {id, agent, prompt, mode, at, time, daily, everyMin, enabled, lastRun, lastDay, done, sessionKey}
 let notes = loadJson(NOTES, []);  // {id, who, text, ts}
 let cal = loadJson(CAL, []);      // {id, title, at, remindMin, notified}
@@ -625,6 +659,7 @@ function runClaude(agent, prompt, opts = {}) {
   broadcast({ type: "task.started", agent, task, session: entry.key,
     // The overlay's NOW-WORKING strip needs to SAY what the work is.
     title: String(opts.logPrompt || prompt).replace(/\s+/g, " ").slice(0, 90) });
+  statBump("runs", agent);
 
   // Persona + assigned skills ride in a stdin preamble (robust across
   // Windows shell quoting); resumed sessions already carry it in context.
@@ -757,6 +792,7 @@ function runClaude(agent, prompt, opts = {}) {
         }
         broadcast({ type: m.is_error ? "task.failed" : "task.completed",
           agent, task, session: entry.key });
+        statBump(m.is_error ? "failed" : "done", null, Number(m.total_cost_usd) || 0);
         if (!m.is_error && subTasks.length) {
           doneFired = true;  // the synthesis run inherits the callback
           releaseProj();
@@ -1095,6 +1131,7 @@ function runSub(parentId, subId, taskText, entry, onDone) {
         }
       } else if (m.type === "result") {
         if (m.session_id) { entry.sid = m.session_id; saveSess(); }
+        statBump(m.is_error ? "failed" : "done", null, Number(m.total_cost_usd) || 0);
         finish(!m.is_error);
       }
     }
@@ -1317,6 +1354,23 @@ function readBodyRaw(req, cb) {
 
 const MAPBG = path.join(__dirname, "map_bg.png");
 
+// Media file server for chat rendering (images / video / audio only).
+const MEDIA_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+  gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp",
+  mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+  mp3: "audio/mpeg", wav: "audio/wav", m4a: "audio/mp4", ogg: "audio/ogg",
+  pdf: "application/pdf" };
+function serveMedia(res, full) {
+  const ext = full.split(".").pop().toLowerCase();
+  const mime = MEDIA_MIME[ext];
+  if (!mime) { res.writeHead(415); return res.end("not a media file"); }
+  fs.readFile(full, (e, data) => {
+    if (e) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, { "content-type": mime, "cache-control": "max-age=300" });
+    res.end(data);
+  });
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && (req.url.split("?")[0] === "/" || req.url.split("?")[0] === "/index.html")) {
     res.writeHead(200, {
@@ -1357,7 +1411,7 @@ const server = http.createServer((req, res) => {
   } else if (req.method === "POST" && req.url === "/chat") {
     readBody(req, (body) => {
       try {
-        let { agent = "main", prompt, session, wait } = JSON.parse(body);
+        let { agent = "main", prompt, session, wait, voice } = JSON.parse(body);
         if (!prompt) throw new Error("no prompt");
         // Saying a project's name binds the conversation to its directory.
         const project = projectFromPrompt(prompt);
@@ -1383,7 +1437,8 @@ const server = http.createServer((req, res) => {
         // requested project workspace.
         const task = agent === "ceo"
           ? ceoFlow(prompt, session, project,
-              { onDone: wait ? (t, ok) => waited && waited(t, ok) : undefined })
+              { logPrompt: voice ? "🎤👑 (สั่งด้วยเสียง) " + prompt : undefined,
+                onDone: wait ? (t, ok) => waited && waited(t, ok) : undefined })
           : agent === "main"
             ? runClaude("main", prompt + directorNote(),
                 { session, project, logPrompt: prompt,
@@ -1869,6 +1924,7 @@ const server = http.createServer((req, res) => {
           reg.apiKeys[n] = String(value).trim().slice(0, 500);
         }
         saveReg();
+        pushRoster();   // feature gates flip live in every client
         res.writeHead(200); res.end("ok");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
@@ -1891,6 +1947,65 @@ const server = http.createServer((req, res) => {
         res.writeHead(200); res.end("ok");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
+
+  } else if (req.method === "POST" && req.url === "/upload") {
+    // 📎 chat attachments → workspace/uploads (agents Read them by path).
+    readBodyRaw(req, (buf) => {
+      try {
+        if (!buf.length) throw new Error("empty file");
+        if (buf.length > 80 * 1024 * 1024) throw new Error("ไฟล์ใหญ่เกิน 80MB");
+        const raw = decodeURIComponent(String(req.headers["x-file-name"] || "file.bin"));
+        const safe = raw.replace(/[^\w.ก-๙ -]/g, "_").slice(-80);
+        const dir = path.join(WORKSPACE, "uploads");
+        fs.mkdirSync(dir, { recursive: true });
+        const name = Date.now() + "_" + safe;
+        const full = path.join(dir, name);
+        fs.writeFileSync(full, buf);
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ path: full, url: "/uploads/" + encodeURIComponent(name), name: safe }));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "GET" && req.url.startsWith("/uploads/")) {
+    const name = decodeURIComponent(req.url.slice(9).split("?")[0]).replace(/[\\/]|\.\./g, "");
+    serveMedia(res, path.join(WORKSPACE, "uploads", name));
+
+  } else if (req.method === "GET" && req.url.startsWith("/media?")) {
+    // Render agent-produced media in chat: absolute path, but ONLY under the
+    // workspace or a registered project (img tags can't send auth headers —
+    // the path allowlist is the guard; daemon binds to localhost anyway).
+    const p = new URL(req.url, "http://x").searchParams.get("p") || "";
+    const norm = path.resolve(p);
+    const roots = [path.resolve(WORKSPACE), ...projects.map((x) => path.resolve(x.dir))];
+    if (!roots.some((r) => norm.toLowerCase().startsWith(r.toLowerCase() + path.sep))) {
+      res.writeHead(403); return res.end("outside allowed roots");
+    }
+    serveMedia(res, norm);
+
+  } else if (req.method === "GET" && req.url === "/features") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(featuresMap()));
+
+  } else if (req.method === "GET" && req.url === "/stats") {
+    // 📊 dashboard: last 7 days of run stats + live system facts.
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      days.push({ day: d, ...(stats[d] || { runs: 0, done: 0, failed: 0, cost: 0, agents: {} }) });
+    }
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({
+      days,
+      uptimeSec: Math.floor(process.uptime()),
+      clients: wsClients.size,
+      pendingPerms: pendingPerms.size,
+      jobs: jobs.filter((j) => !j.done && j.enabled !== false).length,
+      notes: notes.length,
+      events: cal.filter((c) => c.at > Date.now()).length,
+      channels: channels.status(),
+      features: featuresMap(),
+      projects: projectStatus().map((p) => ({ name: p.name, ai: p.ai, open: p.open })),
+    }));
 
   } else if (req.method === "GET" && req.url === "/channels/status") {
     res.writeHead(200, { "content-type": "application/json" });

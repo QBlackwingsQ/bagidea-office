@@ -144,6 +144,12 @@
   #log { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 9px; }
   .msg { max-width: 82%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; word-wrap: break-word; }
   .msg.you { align-self: flex-end; background: rgba(94,200,255,0.13); border: 1px solid var(--line); border-bottom-right-radius: 4px; }
+  /* spoken command: same right-side bubble, voice-flavored */
+  .msg.you.voice { border-color: rgba(255,110,130,0.55); background: rgba(255,110,130,0.10); }
+  .msg.you.voice::before {
+    content: "🎤 สั่งด้วยเสียง"; display: block; font-size: 9.5px;
+    color: #ff9aa8; margin-bottom: 3px; letter-spacing: 0.5px;
+  }
   .msg.agent { align-self: flex-start; background: var(--glass); border: 1px solid rgba(255,255,255,0.07); border-bottom-left-radius: 4px; }
   .msg .who { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--accent); margin-bottom: 4px; font-weight: 600; }
   .msg .who .face { width: 20px; height: 20px; border-radius: 5px; background-color: #1c2740; }
@@ -338,6 +344,43 @@
   body.feedmode #updBar { display: none !important; }
 
   /* type-to-filter + bounded lists keep big collections usable */
+  /* voice buttons greyed when the main key is missing */
+  .nokey { opacity: 0.35; filter: grayscale(1); }
+
+  /* 📊 dashboard */
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .statcard {
+    display: flex; gap: 9px; align-items: center; padding: 9px 11px;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+  }
+  .statcard .ic { font-size: 19px; }
+  .statcard b { display: block; font-size: 15px; color: #dbe7ff; }
+  .statcard span { font-size: 10px; color: var(--dim); letter-spacing: 0.5px; }
+  .statcard small { display: block; font-size: 9.5px; color: rgba(140,158,188,0.7); }
+  .dchart { display: flex; gap: 8px; align-items: flex-end; padding: 6px 2px 0; }
+  .dbar { display: flex; flex-direction: column; align-items: center; gap: 3px; flex: 1; }
+  .dbar i { width: 100%; max-width: 30px; background: linear-gradient(to top, rgba(94,200,255,0.25), rgba(94,200,255,0.8));
+    border-radius: 4px 4px 0 0; display: block; }
+  .dbar span { font-size: 9px; color: var(--dim); }
+
+  /* 📎 attachments */
+  #attachRow { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 10px; }
+  #attachRow:empty { display: none; }
+  .attchip {
+    font-size: 10.5px; color: #cfe3ff; padding: 3px 9px; cursor: pointer;
+    background: rgba(94,200,255,0.1); border: 1px solid rgba(94,200,255,0.35);
+    border-radius: 999px; max-width: 220px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;
+  }
+  .attchip:hover { border-color: #ff6258; color: #ffb3ab; }
+  .msgmedia {
+    display: block; max-width: 100%; max-height: 260px; border-radius: 10px;
+    margin-top: 6px; cursor: pointer; border: 1px solid rgba(255,255,255,0.1);
+  }
+  audio.msgmedia { width: 240px; }
+  a.msgmedia { color: var(--accent); font-size: 12px; }
+
   .filterbox {
     width: 100%; margin: 6px 0; padding: 6px 10px; font-size: 11.5px;
     background: rgba(255,255,255,0.04); border: 1px solid var(--line);
@@ -684,9 +727,13 @@
   <span class="hint" id="pttHint"></span></div>
 
 <div id="threadBar">🧵 thread: <b id="threadName">ล่าสุด (ต่อเนื่องอัตโนมัติ)</b></div>
+<div id="attachRow"></div>
 <footer>
-  <input id="inp" placeholder="Message Main… (Enter to send)" autofocus>
-  <button class="send" id="micBtn" title="พูดแทนพิมพ์ — Windows Voice Typing (Win+H)">🎤</button>
+  <input id="inp" placeholder="Message Main… (Enter to send)" autofocus
+         autocomplete="off" spellcheck="false">
+  <input id="filePick" type="file" multiple style="display:none">
+  <button class="send" id="attachBtn" title="แนบไฟล์ (หรือลากมาวางได้เลย)">📎</button>
+  <button class="send" id="micBtn" title="พูดแทนพิมพ์">🎤</button>
   <button class="send" id="sessBtn" title="Chat sessions (threads)">🧵</button>
   <button class="send" id="send">➤</button>
 </footer>
@@ -734,6 +781,7 @@
   // Live registry from the daemon (roster.sync) — identity source of truth.
   let ROSTER = {}, REGROLES = [], REGSKILLS = {}, REGTOOLS = [], AUTOSKILLS = true;
   let BUILTIN_DESC = {}, REGMCP = {}, SOUND = true, HEARTBEAT = 0;
+  let FEATURES = { openai: false, gemini: false, stt: false, tts: false, live: false, image: false };
   let PROJECTS_CACHE = [];
   function npcOf(id) {
     if (ROSTER[id] && ROSTER[id].avatar) return ROSTER[id].avatar;
@@ -863,8 +911,10 @@
       d.appendChild(w);
     }
     d.appendChild(document.createTextNode(text));
+    if (String(cls).includes("agent")) attachMediaPreviews(d, text);
     log.appendChild(d);
     log.scrollTop = log.scrollHeight;
+    return d;
   }
   function addChip(html) {
     const d = document.createElement("div");
@@ -1055,7 +1105,20 @@
     document.getElementById("pttLive").classList.remove("on");
   }
 
+  // Feature gate: voice needs a MAIN key. Buttons grey out; trying anyway
+  // explains and opens the CONNECT tab.
+  function gateVoiceUI() {
+    document.querySelectorAll(".send[id$='Mic'], #micBtn").forEach((b) =>
+      b.classList.toggle("nokey", !FEATURES.stt));
+  }
+  function voiceGateFail() {
+    pillShow("✗ ฟีเจอร์เสียงต้องมี Main API key (OpenAI หรือ Gemini)", "เปิดหน้าตั้งค่าให้แล้ว", false);
+    setTimeout(pillHide, 3600);
+    openSettings("connect");
+  }
+
   async function voiceBegin(hint) {
+    if (!FEATURES.stt) { voiceGateFail(); return false; }
     if (_rec || _voiceBusy) return false;
     try { await recStart(); } catch (e) {
       pillShow("✗ ไมโครโฟนไม่พร้อม — กดอนุญาตไมค์ให้แอปก่อน", "", false);
@@ -1121,15 +1184,21 @@
         if (!val) return;
         pillShow("🎤 " + val.slice(0, 90), "ส่งแล้ว ✓", false);
         setTimeout(pillHide, 2400);
-        if (document.body.classList.contains("feedmode"))
+        // A spoken command is a REAL chat message: in normal mode the pane
+        // jumps to the CEO seat and the words land as your bubble (with a
+        // voice badge); feed mode mirrors it into the stream. Either way it
+        // is in the Director's thread history forever.
+        if (document.body.classList.contains("feedmode")) {
           addFeed("ceo", "🎤 " + val, "", "");
-        else addChip("🎤 คำสั่งจากคุณ: " + val.slice(0, 140));
-        // Spoken commands are YOUR words — through the CEO seat: the
-        // Director walks over, takes the order, reports back in person.
+        } else {
+          if (target !== "ceo") setTarget("ceo");
+          addMsg("you voice", null, val);
+        }
         await fetch("/chat", {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ agent: "ceo", prompt: val }),
+          body: JSON.stringify({ agent: "ceo", prompt: val, voice: true }),
         });
+        refreshThreadBar();
       })();
     } else voiceBegin("F6 = หยุดและส่ง");
   };
@@ -1426,9 +1495,42 @@
     const chStatus = await fetch("/channels/status").then((x) => x.json()).catch(() => ({}));
     const klist = modalCard.querySelector("#klist");
     if (!klist) return;  // tab switched away while loading
-    klist.innerHTML = Object.keys(regAll.apiKeys || {}).length ? "" :
-      `<div style="font-size:11px;color:var(--dim)">ยังไม่มี key — เพิ่มข้างล่างได้เลย</div>`;
-    for (const [n, v] of Object.entries(regAll.apiKeys || {})) {
+    // ── MAIN keys: dedicated, labeled, feature-aware.
+    const MAINS = [
+      ["OPENAI_API_KEY", "OpenAI", "🎤 ถอดเสียง (Whisper) · 🖼 สร้างภาพ", "platform.openai.com/api-keys"],
+      ["GEMINI_API_KEY", "Gemini", "🎤 ถอดเสียง · 🗣 เสียงพูด agents · 📞 realtime · 🖼 สร้างภาพ", "aistudio.google.com/apikey"],
+    ];
+    const mainBox = modalCard.querySelector("#mainkeys");
+    mainBox.innerHTML = "";
+    for (const [name, label, feats, where] of MAINS) {
+      const has = !!(regAll.apiKeys || {})[name];
+      const card = document.createElement("div");
+      card.className = "arow";
+      card.style.cursor = "default";
+      card.innerHTML =
+        `<div class="meta"><b>${has ? "✅" : "⚠️"} ${label} <span style="font-weight:400;color:var(--dim);font-size:10px">(${name})</span></b>
+          <span>${has ? "ตั้งค่าแล้ว — " + feats : "ยังไม่ได้ตั้ง → " + feats + " จะใช้ไม่ได้ · ขอ key: " + where}</span></div>` +
+        (has
+          ? `<div class="winbtn hide" title="ลบ key">✕</div>`
+          : `<input type="password" placeholder="วาง key…" autocomplete="new-password"
+               style="flex:0 0 150px;margin:0"><div class="winbtn" title="บันทึก">💾</div>`);
+      if (has) {
+        card.querySelector(".winbtn").onclick = () =>
+          api("/registry/key", { name, remove: true }).then(() => openSettings("connect"));
+      } else {
+        card.querySelector(".winbtn").onclick = () => {
+          const v = card.querySelector("input").value.trim();
+          if (v) api("/registry/key", { name, value: v }).then(() => openSettings("connect"));
+        };
+      }
+      mainBox.appendChild(card);
+    }
+    // ── extra keys vault (main keys live above, not here).
+    const extras = Object.entries(regAll.apiKeys || {})
+      .filter(([n]) => n !== "OPENAI_API_KEY" && n !== "GEMINI_API_KEY");
+    klist.innerHTML = extras.length ? "" :
+      `<div style="font-size:11px;color:var(--dim)">ยังไม่มี key เพิ่มเติม</div>`;
+    for (const [n, v] of extras) {
       const row = document.createElement("div");
       row.className = "arow";
       row.style.cursor = "default";
@@ -1536,14 +1638,13 @@
           </div></div>`;
     } else if (tab === "connect") {
       bodyHtml = `
-        <div class="field"><label>🔑 API KEYS — เก็บ key ไว้กลางออฟฟิศ ฉีดเข้า env ของ agent ทุกตัวอัตโนมัติ</label>
-          <div style="font-size:11px;color:var(--dim);margin-bottom:6px">
-            ตั้งชื่อแบบ ENV เช่น <b style="color:var(--text)">OPENAI_API_KEY</b>, <b style="color:var(--text)">GEMINI_API_KEY</b>
-            — agents จะรู้ว่ามี key อะไรให้ใช้ และเรียกใช้ API ได้ทันที</div>
+        <div class="field"><label>⭐ MAIN API KEYS — กุญแจหลักของโปรแกรม (ปลดล็อกฟีเจอร์เสียง · TTS · รูปภาพ · realtime)</label>
+          <div id="mainkeys"></div></div>
+        <div class="field"><label>🔑 API KEYS เพิ่มเติม — ฉีดเข้า env ของ agent ทุกตัว (เช่น GEMINI2 ให้ agents ใช้แยกจาก key หลัก)</label>
           <div id="klist"></div>
           <div class="assistrow" style="margin-top:8px">
-            <input id="kName" placeholder="ชื่อ เช่น OPENAI_API_KEY" style="flex:0 0 170px">
-            <input id="kVal" placeholder="ค่า key (เก็บในเครื่องเท่านั้น)" type="password">
+            <input id="kName" placeholder="ชื่อ เช่น GEMINI2" style="flex:0 0 150px" autocomplete="off">
+            <input id="kVal" placeholder="ค่า key (เก็บในเครื่องเท่านั้น)" type="password" autocomplete="new-password">
             <button class="sparkle" id="addKey">＋</button>
           </div></div>
         <div class="field"><label>📡 CHANNELS — คุยกับออฟฟิศจากภายนอกผ่าน Director (main)</label>
@@ -2013,12 +2114,56 @@
 
   // ---- 🗂 Office Ops: jobs / calendar / notes / org chart -------------------
   document.getElementById("opsBtn").onclick = () => openOps("jobs");
+  // ---- 📊 dashboard: the office at a glance --------------------------------
+  async function renderDash() {
+    const s = await fetch("/stats").then((x) => x.json()).catch(() => null);
+    const box = modalCard.querySelector("#dashBox");
+    if (!box || !s) return;
+    const today = s.days[s.days.length - 1];
+    const up = (sec) => sec > 86400 ? Math.floor(sec / 86400) + " วัน " + Math.floor((sec % 86400) / 3600) + " ชม."
+      : sec > 3600 ? Math.floor(sec / 3600) + " ชม. " + Math.floor((sec % 3600) / 60) + " นาที"
+      : Math.floor(sec / 60) + " นาที";
+    const card = (icon, label, val, sub) =>
+      `<div class="statcard"><div class="ic">${icon}</div>
+        <div><b>${val}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ""}</div></div>`;
+    const maxRuns = Math.max(1, ...s.days.map((d) => d.runs));
+    const bars = s.days.map((d) =>
+      `<div class="dbar" title="${d.day}: ${d.runs} งาน (✓${d.done} ✗${d.failed})">
+        <i style="height:${Math.round((d.runs / maxRuns) * 46) + 3}px"></i>
+        <span>${d.day.slice(8)}</span></div>`).join("");
+    const agentRows = Object.entries(today.agents || {}).sort((a, b) => b[1] - a[1]).slice(0, 8)
+      .map(([id, n]) => `<div class="arow" style="cursor:default;padding:5px 9px">
+        <div class="meta"><b>${nameOf(id)}</b></div>
+        <span style="color:var(--accent);font-weight:700">${n} งาน</span></div>`).join("") ||
+      `<div style="color:var(--dim);font-size:11px">วันนี้ยังไม่มีงาน</div>`;
+    const ch = Object.entries(s.channels).filter(([, v]) => v !== "off")
+      .map(([k, v]) => `${k} <span style="color:${v === "on" ? "#4ade80" : "#ffb054"}">●</span>`)
+      .join(" · ") || "ยังไม่เชื่อมต่อ";
+    box.innerHTML =
+      `<div class="statgrid">
+        ${card("⚡", "งานวันนี้", today.runs, `✓ ${today.done} · ✗ ${today.failed}`)}
+        ${card("💰", "ค่าใช้จ่ายวันนี้", "$" + (today.cost || 0).toFixed(2), "Claude API")}
+        ${card("⏱", "เปิดมาแล้ว", up(s.uptimeSec), `${s.clients} จอเชื่อมต่อ`)}
+        ${card("📋", "งานตั้งเวลา", s.jobs, `${s.events} นัดหมาย · ${s.notes} โน้ต`)}
+        ${card("📁", "โปรเจค", s.projects.length, s.projects.filter((p) => p.ai).length + " มี AI ทำงาน")}
+        ${card("📡", "channels", ch, "")}
+      </div>
+      <div class="field" style="margin-top:10px"><label>📈 งาน 7 วันล่าสุด</label>
+        <div class="dchart">${bars}</div></div>
+      <div class="field" style="margin-top:8px"><label>🏆 ใครขยันสุดวันนี้</label>${agentRows}</div>
+      <div style="font-size:10px;color:var(--dim);margin-top:6px">
+        🔑 main keys: OpenAI ${s.features.openai ? "✅" : "—"} · Gemini ${s.features.gemini ? "✅" : "—"}
+        · perms ค้าง ${s.pendingPerms}</div>`;
+  }
+
   async function openOps(tab) {
     modal.classList.add("open");
     const T = (t, label) => `<div class="tab ${tab === t ? "on" : ""}" data-t="${t}">${label}</div>`;
-    const tabs = `<div class="tabs">${T("proj", "📁 PROJECTS")}${T("jobs", "📋 TASKS")}${T("cal", "📅 CALENDAR")}${T("notes", "📝 NOTES")}${T("org", "🏢 ORG")}</div>`;
+    const tabs = `<div class="tabs">${T("proj", "📁 PROJECTS")}${T("jobs", "📋 TASKS")}${T("cal", "📅 CALENDAR")}${T("notes", "📝 NOTES")}${T("org", "🏢 ORG")}${T("dash", "📊 STATS")}</div>`;
     let body = "";
-    if (tab === "proj") {
+    if (tab === "dash") {
+      body = `<div id="dashBox" style="font-size:12px;color:var(--dim)">loading…</div>`;
+    } else if (tab === "proj") {
       body = `<div style="font-size:11px;color:var(--dim);margin-bottom:6px">
           💡 สั่งงานในแชทโดยพูดชื่อโปรเจคได้เลย — agents รู้จักทุกโปรเจคในรายการนี้และเข้าไปทำงานเอง</div>
         <div id="plist"></div>
@@ -2091,7 +2236,9 @@
     modalCard.innerHTML = hdr("🗂 OFFICE OPS") + tabs + body;
     modalCard.querySelectorAll(".tab").forEach((t) => (t.onclick = () => openOps(t.dataset.t)));
 
-    if (tab === "proj") {
+    if (tab === "dash") {
+      renderDash();
+    } else if (tab === "proj") {
       // Deferred refreshes re-render ONLY while the user still has this tab
       // open — openOps() opens the modal, so a bare delayed call would POP
       // the window back up after the user closed it (reported bug).
@@ -2744,6 +2891,8 @@
       AUTOSKILLS = ev.autoSkills !== false;
       SOUND = ev.sound !== false;
       HEARTBEAT = Number(ev.heartbeatMin || 0);
+      if (ev.features) FEATURES = ev.features;
+      gateVoiceUI();
       for (const id of Object.keys(ROSTER)) ensureAgent(id);
       renderRail();
       setTarget(target);   // refresh name/role if the target was edited
@@ -2909,17 +3058,102 @@
   connect();
 
   // ---- send ---------------------------------------------------------------
+  // ---- 📎 attachments: upload first, send paths with the message ----------
+  let PENDING_FILES = [];   // {path, url, name, kind}
+  function fileKind(name) {
+    const e = name.split(".").pop().toLowerCase();
+    if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(e)) return "image";
+    if (["mp4", "webm", "mov"].includes(e)) return "video";
+    if (["mp3", "wav", "m4a", "ogg"].includes(e)) return "audio";
+    return "file";
+  }
+  async function uploadFiles(files) {
+    for (const f of files) {
+      const chip = document.createElement("div");
+      chip.className = "attchip";
+      chip.textContent = "⏳ " + f.name;
+      document.getElementById("attachRow").appendChild(chip);
+      try {
+        const r = await fetch("/upload", { method: "POST",
+          headers: { "x-file-name": encodeURIComponent(f.name) }, body: f });
+        if (!r.ok) throw new Error(await r.text());
+        const j = await r.json();
+        j.kind = fileKind(j.name);
+        PENDING_FILES.push(j);
+        chip.textContent = ({ image: "🖼 ", video: "🎬 ", audio: "🔊 ", file: "📄 " })[j.kind] + j.name;
+        chip.onclick = () => {
+          PENDING_FILES = PENDING_FILES.filter((x) => x !== j);
+          chip.remove();
+        };
+        chip.title = "คลิกเพื่อเอาออก";
+      } catch (e) {
+        chip.textContent = "✗ " + f.name;
+        setTimeout(() => chip.remove(), 2500);
+      }
+    }
+  }
+  document.getElementById("attachBtn").onclick = () => document.getElementById("filePick").click();
+  document.getElementById("filePick").onchange = (e) => {
+    uploadFiles([...e.target.files]);
+    e.target.value = "";
+  };
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("drop", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.files.length) uploadFiles([...e.dataTransfer.files]);
+  });
+
+  // Media nodes for chat bubbles (uploads + agent-produced files).
+  function mediaNode(url, kind, name) {
+    let el;
+    if (kind === "image") {
+      el = document.createElement("img");
+      el.src = url; el.loading = "lazy";
+      el.onclick = () => window.open(url);
+    } else if (kind === "video") {
+      el = document.createElement("video");
+      el.src = url; el.controls = true;
+    } else if (kind === "audio") {
+      el = document.createElement("audio");
+      el.src = url; el.controls = true;
+    } else {
+      el = document.createElement("a");
+      el.href = url; el.target = "_blank"; el.textContent = "📄 " + (name || url);
+    }
+    el.className = "msgmedia";
+    return el;
+  }
+  // Agent replies that mention media files get inline previews.
+  const MEDIA_RE = /((?:[A-Za-z]:\\|\/uploads\/)[^\s"'`<>|?*]+?\.(?:png|jpe?g|gif|webp|bmp|mp4|webm|mp3|wav|m4a|ogg))/gi;
+  function attachMediaPreviews(d, text) {
+    const seen = new Set();
+    for (const m of String(text).matchAll(MEDIA_RE)) {
+      const p = m[1];
+      if (seen.has(p) || seen.size >= 4) continue;
+      seen.add(p);
+      const url = p.startsWith("/uploads/") ? p : "/media?p=" + encodeURIComponent(p);
+      d.appendChild(mediaNode(url, fileKind(p), p.split(/[\\/]/).pop()));
+    }
+  }
+
   async function send() {
     const inp = document.getElementById("inp");
-    const prompt = inp.value.trim();
-    if (!prompt) return;
+    let prompt = inp.value.trim();
+    const files = PENDING_FILES.splice(0);
+    document.getElementById("attachRow").innerHTML = "";
+    if (!prompt && !files.length) return;
     if (groupView) {
       addChip("📖 กำลังดูบันทึกย้อนหลัง (อ่านอย่างเดียว) — คลิก agent ใน rail เพื่อกลับไปคุย");
       return;
     }
     inp.value = "";
     uiSnd("send");
-    addMsg("you", null, prompt);
+    const d = addMsg("you", null, prompt || "(ส่งไฟล์แนบ)");
+    for (const f of files) d.appendChild(mediaNode(f.url, f.kind, f.name));
+    if (files.length) {
+      prompt += "\n\n[ไฟล์แนบจากผู้ใช้ — เปิดดูได้ด้วย Read]:\n" +
+        files.map((f) => "- " + f.path).join("\n");
+    }
     const session = SESS[target];
     if (session === "new") SESS[target] = undefined;  // next sends continue it
     await fetch("/chat", {

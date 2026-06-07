@@ -156,9 +156,46 @@ const SPLASH_HTML: &str = r#"<!doctype html>
 
 const ORB_HTML: &str = r#"<!doctype html>
 <html><body style="margin:0;overflow:hidden;background:#0a111d;user-select:none;-webkit-user-select:none;cursor:pointer">
-<img src="http://127.0.0.1:8787/brand/logo_ico_cute.png" draggable="false"
-     style="position:absolute;left:0.9px;top:1.4px;width:70.8px;height:70.8px"
+<div id="ring"></div>
+<img id="logo" src="http://127.0.0.1:8787/brand/logo_ico_cute.png" draggable="false"
      onerror="document.body.style.background='radial-gradient(circle at 32% 28%,#2a78d8,#0b1422)'">
+<style>
+  /* a quiet living ring: slow drift at rest, eager spin while agents work */
+  #ring { position:absolute; inset:0; border-radius:50%;
+    background: conic-gradient(from 0deg,
+      rgba(94,200,255,0) 0%, rgba(94,200,255,0.9) 22%,
+      rgba(168,130,255,0.55) 38%, rgba(94,200,255,0) 60%);
+    animation: spin 4.5s linear infinite; }
+  #ring::after { content:""; position:absolute; inset:2.5px; border-radius:50%; background:#0a111d; }
+  #logo { position:absolute; left:3.4px; top:3.9px; width:65.8px; height:65.8px;
+    z-index:2; border-radius:50%; animation: breathe 3.4s ease-in-out infinite; }
+  body.busy #ring { animation-duration: 1.1s;
+    background: conic-gradient(from 0deg,
+      rgba(255,176,84,0) 0%, rgba(255,176,84,0.95) 22%,
+      rgba(94,200,255,0.7) 38%, rgba(255,176,84,0) 60%); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(0.955); } }
+</style>
+<script>
+  // Live pulse: the ring knows when the office is actually working.
+  let busy = 0;
+  function wire() {
+    try {
+      const ws = new WebSocket('ws://127.0.0.1:8787/ws');
+      ws.onmessage = (m) => {
+        try {
+          const e = JSON.parse(m.data);
+          if (e.replay) return;
+          if (e.type === 'task.started') busy++;
+          else if (e.type === 'task.completed' || e.type === 'task.failed') busy = Math.max(0, busy - 1);
+          document.body.classList.toggle('busy', busy > 0);
+        } catch {}
+      };
+      ws.onclose = () => { busy = 0; document.body.classList.remove('busy'); setTimeout(wire, 5000); };
+    } catch { setTimeout(wire, 5000); }
+  }
+  wire();
+</script>
 <script>
   // Messenger chat-head feel: press-and-move drags, clean click toggles.
   let downAt = null, dragged = false;
@@ -587,6 +624,8 @@ fn main() {
     let overlay_view = WebViewBuilder::new()
         .with_url("http://127.0.0.1:8787/")
         .with_devtools(true)
+        // Edge's "Saved info" autofill bubbles are noise on an app UI.
+        .with_general_autofill_enabled(false)
         .with_ipc_handler(move |req| {
             let _ = match req.body().as_str() {
                 "drag-overlay" => p_overlay.send_event(UserEvent::DragOverlay),
