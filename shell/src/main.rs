@@ -31,6 +31,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     IsWindowVisible, SendMessageTimeoutW, SetLayeredWindowAttributes, SetParent,
     SetWindowLongW, ShowWindow, SystemParametersInfoW, GWL_EXSTYLE, LWA_ALPHA,
     SMTO_NORMAL, SPI_SETDESKWALLPAPER, SW_HIDE, SW_SHOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW,
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -507,6 +508,13 @@ fn attach_wallpaper_when_ready(pid: u32, proxy: tao::event_loop::EventLoopProxy<
         // Cloak: an empty window region hides every pixel until the scene
         // is actually rendering (no black loading box on screen).
         SetWindowRgn(godot as _, CreateRectRgn(0, 0, 0, 0), 1);
+        // And no taskbar button either — the renderer loads as a TOOL
+        // window (taskbar re-reads styles on a hide/show cycle). The
+        // circular logo splash is the only thing the user sees boot.
+        ShowWindow(godot, SW_HIDE);
+        let ex = GetWindowLongW(godot, GWL_EXSTYLE) as u32;
+        SetWindowLongW(godot, GWL_EXSTYLE, (ex | WS_EX_TOOLWINDOW) as i32);
+        ShowWindow(godot, SW_SHOW);
 
         let started = std::time::SystemTime::now() - std::time::Duration::from_secs(5);
         let flag = std::env::temp_dir().join("bagidea_world_ready");
