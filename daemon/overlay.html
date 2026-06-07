@@ -59,21 +59,24 @@
   /* ---------- floating menus (daylight / sessions) ----------
      position:fixed + high z-index at BODY level — menus inside the
      glass header/footer get painted under later siblings and eat no clicks. */
-  #dayMenu, #sessMenu {
+  #dayMenu, #sessMenu, #moreMenu {
     display: none; position: fixed; z-index: 200;
     background: rgba(13, 19, 32, 0.97);
     border: 1px solid var(--line); border-radius: 12px; padding: 6px;
     box-shadow: 0 12px 40px rgba(0,0,0,0.65);
   }
   #dayMenu { top: 46px; right: 12px; }
+  #moreMenu { top: 46px; right: 12px; min-width: 180px; }
   #sessMenu { bottom: 60px; right: 12px; min-width: 250px; max-height: 290px; overflow-y: auto; }
-  #dayMenu.open, #sessMenu.open { display: block; }
-  #dayMenu .opt, #sessMenu .opt {
-    display: flex; gap: 8px; align-items: center; cursor: pointer;
-    padding: 7px 12px; border-radius: 8px; font-size: 12.5px; white-space: nowrap;
+  #dayMenu.open, #sessMenu.open, #moreMenu.open { display: block; }
+  body.feedmode #moreMenu { display: none !important; }
+  #dayMenu .opt, #sessMenu .opt, #moreMenu .opt {
+    display: flex; gap: 9px; align-items: center; cursor: pointer;
+    padding: 8px 12px; border-radius: 8px; font-size: 12.5px; white-space: nowrap;
   }
+  #moreMenu .opt span { color: var(--text); }
   #sessMenu .opt { display: block; overflow: hidden; text-overflow: ellipsis; }
-  #dayMenu .opt:hover, #sessMenu .opt:hover { background: rgba(94,200,255,0.12); }
+  #dayMenu .opt:hover, #sessMenu .opt:hover, #moreMenu .opt:hover { background: rgba(94,200,255,0.12); }
   #dayMenu .opt.active, #sessMenu .opt.active { color: var(--accent); font-weight: 700; }
   #sessMenu .opt small { color: var(--dim); display: block; font-size: 10px; }
 
@@ -673,7 +676,7 @@
     .seat .face { width: 30px; height: 30px; }
     header { padding: 6px 10px; font-size: 11px; }
     header .sub { display: none; }
-    #discussBtn, #mapBtn, #dayBtn, #setBtn, #opsBtn { display: none; }
+    #opsBtn, #setBtn { display: none; }  /* still reachable via ⋯ + window */
     #miniBtn { margin-left: auto; }
     #threadBar { display: none; }
     #log { padding: 10px; }
@@ -686,16 +689,20 @@
   <span class="logo">BAGIDEA</span> OFFICE
   <span id="conn"></span>
   <button id="opsBtn" title="Office Ops — งาน / ปฏิทิน / โน้ต / ผังองค์กร" style="margin-left:auto">🗂</button>
-  <button id="pluginBtn" title="Plugins — ส่วนขยาย" style="margin-left:6px">🧩</button>
-  <button id="editBtn" title="จัดออฟฟิศ — Office Editor" style="margin-left:6px">🎨</button>
-  <button id="discussBtn" title="Let agents discuss together" style="margin-left:6px">🗣</button>
-  <button id="mapBtn" title="Top-down office map" style="margin-left:6px">🗺</button>
-  <button id="dayBtn" title="World atmosphere" style="margin-left:6px">🌗</button>
   <button id="setBtn" title="Office settings — agents, roles" style="margin-left:6px">⚙</button>
+  <button id="moreBtn" title="เพิ่มเติม" style="margin-left:6px">⋯</button>
   <button id="sideBtn" title="Security Center & Mission Control" style="margin-left:6px">🛡<span id="permBadge"></span></button>
   <div class="winbtn" id="miniBtn" title="Mini window" style="margin-left:6px">◱</div>
   <div class="winbtn hide" id="hideBtn" title="Hide (chat head brings it back)">—</div>
 </header>
+<!-- ⋯ overflow menu: secondary tools, so the header never overflows -->
+<div id="moreMenu">
+  <div class="opt" id="pluginBtn">🧩 <span>Plugins</span></div>
+  <div class="opt" id="editBtn">🎨 <span>จัดออฟฟิศ</span></div>
+  <div class="opt" id="discussBtn">🗣 <span>ประชุม agents</span></div>
+  <div class="opt" id="mapBtn">🗺 <span>แผนที่</span></div>
+  <div class="opt" id="dayBtn">🌗 <span>บรรยากาศ</span></div>
+</div>
 
 <!-- 🔵 live work strip: every running task, front and center -->
 <div id="nowStrip"></div>
@@ -1628,6 +1635,13 @@
     document.getElementById("dayMenu").classList.toggle("open");
   };
   document.addEventListener("click", () => document.getElementById("dayMenu").classList.remove("open"));
+
+  // ⋯ overflow menu — holds the secondary tools so the header never overflows
+  const moreMenu = document.getElementById("moreMenu");
+  document.getElementById("moreBtn").onclick = (e) => { e.stopPropagation(); moreMenu.classList.toggle("open"); };
+  document.addEventListener("click", () => moreMenu.classList.remove("open"));
+  moreMenu.querySelectorAll(".opt").forEach((o) =>
+    o.addEventListener("click", () => moreMenu.classList.remove("open")));
 
   // ---- settings / editor / ID card -----------------------------------------
   const modal = document.getElementById("modal");
