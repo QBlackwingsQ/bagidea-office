@@ -32,10 +32,12 @@ func _on_layout(_result: int, code: int, _headers: PackedStringArray, body: Pack
 	if not (data is Dictionary):
 		return
 	# restore the saved room arrangement (jigsaw swap) before placing decor
-	if data.get("rooms") is Array:
+	if data.get("rooms") is Array or data.get("ghost") is Array:
 		var wb := get_node_or_null("/root/OfficeFloor/World")
-		if wb and wb.has_method("apply_room_order"):
+		if wb and data.get("rooms") is Array and wb.has_method("apply_room_order"):
 			wb.apply_room_order(data["rooms"])
+		if wb and data.get("ghost") is Array and (data["ghost"] as Array).size() == 2 and wb.has_method("set_ghost_deck_pos"):
+			wb.set_ghost_deck_pos(float(data["ghost"][0]), float(data["ghost"][1]))
 	if not (data.get("items") is Array):
 		return
 	for c in _root.get_children():

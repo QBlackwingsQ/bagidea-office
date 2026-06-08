@@ -318,6 +318,8 @@ func _on_layout(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray
 	# restore a saved room arrangement, then refresh the swap panel
 	if data is Dictionary and data.get("rooms") is Array and world and world.has_method("apply_room_order"):
 		world.apply_room_order(data["rooms"])
+	if data is Dictionary and data.get("ghost") is Array and (data["ghost"] as Array).size() == 2 and world and world.has_method("set_ghost_deck_pos"):
+		world.set_ghost_deck_pos(float(data["ghost"][0]), float(data["ghost"][1]))
 	_refresh_scene()
 	_refresh_rooms()
 
@@ -540,15 +542,9 @@ func _build_ui() -> void:
 	var bh := HBoxContainer.new(); bh.add_theme_constant_override("separation", 8); bar.add_child(bh)
 	var bt := Label.new(); bt.text = "🎨 EDITOR"; bh.add_child(bt)
 	bh.add_child(VSeparator.new())
-	var plab := Label.new(); plab.text = "Layout:"; plab.add_theme_font_size_override("font_size", 11); bh.add_child(plab)
-	var pbtn := OptionButton.new(); pbtn.name = "PresetPick"; pbtn.add_item(L("Pick layout…", "เลือก layout…"))
-	for pr in PRESETS: pbtn.add_item("⭐ " + pr["name"])
-	pbtn.item_selected.connect(_on_preset_picked); bh.add_child(pbtn)
-	bh.add_child(VSeparator.new())
 	var imp := Button.new(); imp.text = "📦 .glb"; imp.pressed.connect(_import_model); bh.add_child(imp)
 	var pst := Button.new(); pst.text = "🖼 image"; pst.pressed.connect(_import_image); bh.add_child(pst)
 	var save := Button.new(); save.text = L("💾 Save", "💾 บันทึก"); save.pressed.connect(_save); bh.add_child(save)
-	var savep := Button.new(); savep.text = L("⭐ As preset", "⭐ เป็น preset"); savep.pressed.connect(_save_as_preset); bh.add_child(savep)
 	ui.add_child(bar)
 
 	# ── LEFT COLUMN — fills the left edge top-to-bottom: palette (scrolls) on
@@ -563,6 +559,17 @@ func _build_ui() -> void:
 	var rgrid := GridContainer.new(); rgrid.name = "RoomGrid"; rgrid.columns = 3
 	rgrid.add_theme_constant_override("h_separation", 3); rgrid.add_theme_constant_override("v_separation", 3)
 	lcol.add_child(rgrid)
+	# 👻 move the floating ghost (sub-ops) office
+	var glab := Label.new(); glab.text = L("👻 Ghost office (move)", "👻 ห้องผี (ย้าย)"); glab.add_theme_font_size_override("font_size", 10); lcol.add_child(glab)
+	var grow := HBoxContainer.new(); grow.add_theme_constant_override("separation", 3); lcol.add_child(grow)
+	var step := 1.0
+	for d in [["◀", -step, 0.0], ["▶", step, 0.0], ["▲", 0.0, -step], ["▼", 0.0, step]]:
+		var gb := Button.new(); gb.text = String(d[0]); gb.custom_minimum_size = Vector2(40, 26)
+		var dx: float = d[1]; var dz: float = d[2]
+		gb.pressed.connect(func():
+			if world and world.has_method("move_ghost_deck"):
+				world.move_ghost_deck(dx, dz); _flash(L("👻 moved ghost office", "👻 ย้ายห้องผีแล้ว")))
+		grow.add_child(gb)
 	lcol.add_child(HSeparator.new())
 	var title := Label.new(); title.text = L("＋ Add object", "＋ เพิ่มวัตถุ"); lcol.add_child(title)
 	var hint := Label.new(); hint.text = L("L-drag=pan · click=select · drag=move · R-drag=rotate · wheel=zoom", "ลากซ้าย=เลื่อนกล้อง · คลิกวัตถุ=เลือก · ลาก=ย้าย · คลิกขวา=หมุน · ล้อ=ซูม")
@@ -781,6 +788,8 @@ func _current_items() -> Array:
 func _save() -> void:
 	var payload := { "items": _current_items() }
 	if world and world.has_method("get_room_order"): payload["rooms"] = world.get_room_order()
+	if world and world.has_method("ghost_deck_pos"):
+		var gp: Vector2 = world.ghost_deck_pos(); payload["ghost"] = [gp.x, gp.y]
 	_save_req.request(LAYOUT_URL, ["content-type: application/json"], HTTPClient.METHOD_POST, JSON.stringify(payload))
 	_flash(L("💾 Saved — wallpaper updated", "💾 บันทึกแล้ว — วอลเปเปอร์อัปเดต"))
 

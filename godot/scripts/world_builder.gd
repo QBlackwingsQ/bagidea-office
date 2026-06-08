@@ -108,6 +108,7 @@ const BOARD_COLORS := {
 
 var astar := AStar3D.new()
 var _grid: Node3D            # the swappable room-grid (owns geometry, anchors, A* graph)
+var _ghost_deck: Node3D     # the floating sub-ops platform (movable from the editor)
 const GRID_SCRIPT := preload("res://scripts/grid_world.gd")
 var _ops_nodes: Array = []   # baked ops-desk visuals (hideable when the editor supplies custom workstations)
 
@@ -152,6 +153,14 @@ func apply_room_order(target: Array) -> void:
 			if _grid.room_order[j] == target[i]:
 				_grid.swap_slots(i, j); break
 	_resnap_agents()
+
+## Ghost (sub-ops) deck position — editor nudges it, layout persists it.
+func move_ghost_deck(dx: float, dz: float) -> void:
+	if _ghost_deck: _ghost_deck.position += Vector3(dx, 0, dz)
+func set_ghost_deck_pos(x: float, z: float) -> void:
+	if _ghost_deck: _ghost_deck.position = Vector3(x, _ghost_deck.position.y, z)
+func ghost_deck_pos() -> Vector2:
+	return Vector2(_ghost_deck.position.x, _ghost_deck.position.z) if _ghost_deck else Vector2.ZERO
 
 ## Hide/show the baked ops desks (used when a custom layout provides its own
 ## work desks so they don't double up).
@@ -429,9 +438,10 @@ func _build_ghost_deck() -> void:
 	var deck := Node3D.new()
 	deck.name = "GhostDeck"
 	add_child(deck)
-	# shift the whole deck so it floats above the grid (built around old east
-	# coords ~x14,z-4; grid server slot sits near x8,z-8)
+	# shift the whole deck so it floats above the grid (geometry is built around
+	# old east coords ~x14,z-4, so this offset re-centres it over the office)
 	deck.position = Vector3(-7.0, 0.4, -3.6)
+	_ghost_deck = deck
 
 	var glass := StandardMaterial3D.new()
 	glass.albedo_color = Color(0.62, 0.78, 1.0, 0.2)
@@ -734,9 +744,12 @@ func set_night_life(night: bool) -> void:
 ## Cozy lamp posts around the building (night dressing for the lawn).
 func _build_garden_lamps() -> void:
 	var pole_mat := _mat(Color(0.13, 0.14, 0.18), 0.5)
-	for pos in [Vector3(-12.2, 0, -7.5), Vector3(-12.2, 0, 2.0), Vector3(-12.2, 0, 11.5),
-			Vector3(18.2, 0, -7.5), Vector3(18.2, 0, 2.0), Vector3(18.2, 0, 11.5),
-			Vector3(2.0, 0, 16.2), Vector3(11.0, 0, 16.2)]:
+	# Even ring on the lawn, OUTSIDE the office walls (office spans x±15.75,
+	# z±12) so a wall never clips a lamp post.
+	for pos in [Vector3(-17.6, 0, -8), Vector3(-17.6, 0, 0), Vector3(-17.6, 0, 8),
+			Vector3(17.6, 0, -8), Vector3(17.6, 0, 0), Vector3(17.6, 0, 8),
+			Vector3(-8, 0, -14.2), Vector3(0, 0, -14.2), Vector3(8, 0, -14.2),
+			Vector3(-8, 0, 14.2), Vector3(0, 0, 14.2), Vector3(8, 0, 14.2)]:
 		var lamp := Node3D.new()
 		add_child(lamp)
 		lamp.position = pos

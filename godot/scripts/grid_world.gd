@@ -10,7 +10,8 @@ extends Node3D
 ## Developed standalone (render-to-PNG) so the geometry can be perfected before
 ## being wired into the live world_builder API.
 
-const CELL := 8.0          # cell pitch (room interior ~ CELL - wall)
+const CELL_X := 10.5       # cell width  (X) — rooms are rectangular: X longer than Z
+const CELL_Z := 8.0        # cell depth  (Z)
 const GRID_COLS := 3
 const GRID_ROWS := 3
 const WALL_H := 4.0
@@ -77,19 +78,19 @@ func _ready() -> void:
 func slot_center(slot: int) -> Vector3:
 	var c := slot % GRID_COLS
 	var r := slot / GRID_COLS
-	var x := (c - (GRID_COLS - 1) * 0.5) * CELL
-	var z := (r - (GRID_ROWS - 1) * 0.5) * CELL
+	var x := (c - (GRID_COLS - 1) * 0.5) * CELL_X
+	var z := (r - (GRID_ROWS - 1) * 0.5) * CELL_Z
 	return Vector3(x, 0, z)
 
 func _build() -> void:
 	# ground slab + outer perimeter wall around the whole grid
-	var halfx := GRID_COLS * CELL * 0.5
-	var halfz := GRID_ROWS * CELL * 0.5
-	add_child(_box(Vector3(0, -0.1, 0), Vector3(GRID_COLS * CELL + 0.6, 0.2, GRID_ROWS * CELL + 0.6), _m("232838", 0.5)))
+	var halfx := GRID_COLS * CELL_X * 0.5
+	var halfz := GRID_ROWS * CELL_Z * 0.5
+	add_child(_box(Vector3(0, -0.1, 0), Vector3(GRID_COLS * CELL_X + 0.6, 0.2, GRID_ROWS * CELL_Z + 0.6), _m("232838", 0.5)))
 	# perimeter is a U: back (north) + the two sides, with the FRONT (south, the
 	# camera-facing side) left open — same silhouette as the original office.
-	var lenx := GRID_COLS * CELL + WALL_T
-	var lenz := GRID_ROWS * CELL
+	var lenx := GRID_COLS * CELL_X + WALL_T
+	var lenz := GRID_ROWS * CELL_Z
 	_perim(Vector3(0, 0, -halfz), Vector3(lenx, 0, WALL_T))      # back wall
 	_perim(Vector3(-halfx, 0, 0), Vector3(WALL_T, 0, lenz))      # west wall
 	_perim(Vector3( halfx, 0, 0), Vector3(WALL_T, 0, lenz))      # east wall
@@ -242,51 +243,55 @@ func _build_room(room: Node3D, kind: String) -> void:
 	if kit:
 		_floor_tiles(room, tint)
 	else:
-		var fl := _box(Vector3(0, 0.02, 0), Vector3(CELL - WALL_T, 0.04, CELL - WALL_T), _m(String(d["tint"]), 0.18))
+		var fl := _box(Vector3(0, 0.02, 0), Vector3(CELL_X - WALL_T, 0.04, CELL_Z - WALL_T), _m(String(d["tint"]), 0.18))
 		room.add_child(fl)
 	# ── low dividers: knee-to-waist glass railings, open and airy ────────────
 	_dividers(room, tint)
 	# ── lighting: ONE soft accent dome (sun + ambient already light the floor;
 	#    extra lights wash the polished tiles out to white) ───────────────────
 	var lamp := OmniLight3D.new(); lamp.position = Vector3(0, 2.6, 0)
-	lamp.light_color = Color(String(d["accent"])); lamp.light_energy = 0.9; lamp.omni_range = CELL * 0.85
+	lamp.light_color = Color(String(d["accent"])); lamp.light_energy = 0.9; lamp.omni_range = CELL_X * 0.85
 	room.add_child(lamp)
 	_furnish(room, kind, String(d["accent"]))
 
-## Polished tinted metal floor — 2×2 kit tiles stretched to the cell.
+## Polished tinted metal floor — 3×2 kit tiles stretched to the rectangular cell.
 func _floor_tiles(room: Node3D, tint: Color) -> void:
-	var span := CELL - WALL_T
-	var n := 2
-	for ix in n:
-		for iz in n:
-			var px := ((ix + 0.5) / float(n) - 0.5) * span
-			var pz := ((iz + 0.5) / float(n) - 0.5) * span
+	var spx := CELL_X - WALL_T
+	var spz := CELL_Z - WALL_T
+	var nx := 3; var nz := 2
+	for ix in nx:
+		for iz in nz:
+			var px := ((ix + 0.5) / float(nx) - 0.5) * spx
+			var pz := ((iz + 0.5) / float(nz) - 0.5) * spz
 			var tile := _kit_node(room, "Floor_Metal_Square", Vector3(px, 0, pz), 0.0,
-				Vector3(span / n / 4.0, 1.0, span / n / 4.0))
+				Vector3(spx / nx / 4.0, 1.0, spz / nz / 4.0))
 			# mid-tone, not pastel — pastel blows out to white under the sun
 			if tile: _tint_meshes(tile, tint * 0.62, 0.42)
 
-## Four low glass railings (one per side), each split around a centre door gap.
+## Low glass railings on all four sides, each split around a centre door gap.
 func _dividers(room: Node3D, tint: Color) -> void:
-	var half := CELL * 0.5
-	var side := (CELL - DOOR_W) * 0.5
-	var off := (DOOR_W + side) * 0.5
+	var hx := CELL_X * 0.5         # east/west walls sit here
+	var hz := CELL_Z * 0.5         # north/south walls sit here
+	var seg_x := (CELL_X - DOOR_W) * 0.5   # length of each north/south segment (runs along X)
+	var seg_z := (CELL_Z - DOOR_W) * 0.5   # length of each east/west segment (runs along Z)
+	var off_x := (DOOR_W + seg_x) * 0.5
+	var off_z := (DOOR_W + seg_z) * 0.5
 	var kit := _kit_avail()
 	for s in [-1.0, 1.0]:
-		var n: float = s * half
+		var nz: float = s * hz
+		var nx: float = s * hx
 		if kit:
-			var sx := Vector3(side / 3.92, 1.0, 1.0)
-			_kit_node(room, "Railing_Flat", Vector3(-off, 0, n), 0.0, sx)
-			_kit_node(room, "Railing_Flat", Vector3(off, 0, n), 0.0, sx)
-			_kit_node(room, "Railing_Flat", Vector3(n, 0, -off), 90.0, sx)
-			_kit_node(room, "Railing_Flat", Vector3(n, 0, off), 90.0, sx)
+			_kit_node(room, "Railing_Flat", Vector3(-off_x, 0, nz), 0.0, Vector3(seg_x / 3.92, 1.0, 1.0))
+			_kit_node(room, "Railing_Flat", Vector3(off_x, 0, nz), 0.0, Vector3(seg_x / 3.92, 1.0, 1.0))
+			_kit_node(room, "Railing_Flat", Vector3(nx, 0, -off_z), 90.0, Vector3(seg_z / 3.92, 1.0, 1.0))
+			_kit_node(room, "Railing_Flat", Vector3(nx, 0, off_z), 90.0, Vector3(seg_z / 3.92, 1.0, 1.0))
 		else:
 			var gm := _m("aac6e8", 0.08); gm.albedo_color.a = 0.5
 			gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-			room.add_child(_box(Vector3(-off, 0.55, n), Vector3(side, 1.1, 0.06), gm))
-			room.add_child(_box(Vector3(off, 0.55, n), Vector3(side, 1.1, 0.06), gm))
-			room.add_child(_box(Vector3(n, 0.55, -off), Vector3(0.06, 1.1, side), gm))
-			room.add_child(_box(Vector3(n, 0.55, off), Vector3(0.06, 1.1, side), gm))
+			room.add_child(_box(Vector3(-off_x, 0.55, nz), Vector3(seg_x, 1.1, 0.06), gm))
+			room.add_child(_box(Vector3(off_x, 0.55, nz), Vector3(seg_x, 1.1, 0.06), gm))
+			room.add_child(_box(Vector3(nx, 0.55, -off_z), Vector3(0.06, 1.1, seg_z), gm))
+			room.add_child(_box(Vector3(nx, 0.55, off_z), Vector3(0.06, 1.1, seg_z), gm))
 
 ## Tint + polish a kit model's meshes (mirrors world_builder._tint_meshes).
 func _tint_meshes(node: Node, tint: Color, rough := -1.0) -> void:
