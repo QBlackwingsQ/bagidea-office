@@ -144,6 +144,12 @@ Point the agent at this guide and it has everything it needs.
 
 ## 6. Installing / removing
 
+> **Fastest start:** fork the template repo
+> [`bagidea/bagidea-office-template`](https://github.com/bagidea/bagidea-office-template)
+> — a working plugin (`hello`) that reads live office data, posts to the feed and
+> shows every pattern here, plus a `CLAUDE.md` so an agent can extend it. Then
+> `bagidea plugin install <your-fork-url>`.
+
 - **Local**: drop the folder in `plugins/`, then restart, or `POST /plugins/reload`
   (the 🔄 button on the 🧩 panel).
 - **From GitHub**: `bagidea plugin install https://github.com/you/your-plugin`
