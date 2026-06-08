@@ -2,6 +2,10 @@
 // Tokenizer → shunting-yard → RPN → evaluate. Supports basic arithmetic plus
 // advanced functions/constants. Exposed as an agent command (calc) and an HTTP
 // route the panel calls, so agents and the user share the same engine.
+//
+// Built on the BagIdea Office plugin template — see the factory shape below.
+// This plugin is self-contained math, so it doesn't use `ctx`; the template
+// (bagidea-office-template) documents the full ctx API and every pattern.
 
 const FUNCS = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan,

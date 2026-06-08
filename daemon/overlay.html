@@ -2572,7 +2572,10 @@
     const box = modalCard.querySelector("#plgList");
     if (!(r.plugins || []).length)
       box.innerHTML = `<div style="font-size:11.5px;color:var(--dim)">ยังไม่มี plugin</div>`;
-    for (const p of r.plugins || []) {
+    // Core (🔒) plugins pin to the top so newly installed ones never push
+    // them out of view; stable within each group.
+    const ordered = [...(r.plugins || [])].sort((a, b) => (b.core ? 1 : 0) - (a.core ? 1 : 0));
+    for (const p of ordered) {
       const row = document.createElement("div");
       row.className = "arow";
       row.innerHTML = `<div class="meta"><b>${p.name}</b>

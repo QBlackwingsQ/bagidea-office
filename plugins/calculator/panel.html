@@ -1,30 +1,38 @@
 <!doctype html>
+<!--
+  🧮 Calculator — panel (the UI opened from the 🧩 Plugins list).
+  Follows the BagIdea Office plugin template: dark-theme :root vars, a single
+  BASE path, and all logic talking to the plugin's own HTTP routes.
+  The layout is a flex column that fills the panel height exactly, so the
+  keypad never overflows and there is no scrollbar.
+-->
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>🧮 Calculator</title>
 <style>
-  :root { --accent:#5ec8ff; --dim:#8294ab; }
+  :root { --bg:#0c1322; --fg:#dbe7ff; --dim:#7e8db0; --accent:#5ec8ff; --card:#13203a; }
   * { box-sizing:border-box; margin:0; padding:0; font-family:'Segoe UI','Noto Sans Thai',sans-serif; }
-  body { background:#0c1322; color:#dbe7ff; padding:14px; user-select:none; }
-  h2 { font-size:13px; letter-spacing:1.5px; color:var(--accent); margin-bottom:10px; }
+  html, body { height:100%; }
+  body { background:var(--bg); color:var(--fg); padding:12px; user-select:none;
+    display:flex; flex-direction:column; gap:8px; overflow:hidden; }
   #disp { background:#0a0f1c; border:1px solid rgba(255,255,255,0.08); border-radius:10px;
-    padding:10px 12px; min-height:62px; text-align:right; }
-  #expr { font-size:15px; color:#dbe7ff; word-break:break-all; min-height:20px; outline:none; }
-  #res { font-size:22px; font-weight:700; color:var(--accent); margin-top:4px; min-height:26px; }
-  #hist { max-height:74px; overflow-y:auto; margin:8px 0; font-size:10.5px; color:var(--dim); text-align:right; }
-  #hist div { cursor:pointer; padding:1px 0; }
+    padding:10px 12px; text-align:right; flex:0 0 auto; }
+  #expr { font-size:16px; color:var(--fg); word-break:break-all; min-height:22px; outline:none; }
+  #res { font-size:23px; font-weight:700; color:var(--accent); margin-top:4px; min-height:26px; }
+  #hist { flex:0 0 auto; max-height:36px; overflow:hidden; font-size:10.5px; color:var(--dim); text-align:right; line-height:1.5; }
+  #hist div { cursor:pointer; }
   #hist div:hover { color:var(--accent); }
-  .grid { display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-top:8px; }
-  button { padding:11px 0; border-radius:9px; cursor:pointer; font-size:13px;
-    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.10); color:#dbe7ff; }
+  .grid { display:grid; grid-template-columns:repeat(5,1fr); grid-auto-rows:1fr; gap:6px;
+    flex:1 1 auto; min-height:0; }
+  button { border-radius:9px; cursor:pointer; font-size:14px;
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.10); color:var(--fg); }
   button:hover { border-color:var(--accent); }
-  button.fn { color:#9fd4ff; font-size:11.5px; background:rgba(94,200,255,0.07); }
+  button.fn { color:#9fd4ff; font-size:12px; background:rgba(94,200,255,0.07); }
   button.op { color:#ffd24a; }
   button.eq { grid-column:span 2; background:rgba(94,200,255,0.16); border-color:var(--accent); color:#fff; }
   button.danger { color:#ff7a7a; }
 </style></head>
 <body>
-<h2>🧮 CALCULATOR</h2>
 <div id="disp">
   <div id="expr" contenteditable="true" spellcheck="false"></div>
   <div id="res"></div>
@@ -73,13 +81,14 @@
   <button class="fn" data-i="abs(">|x|</button>
 </div>
 <script>
+  const BASE = "/plugin/calculator";
   const E = document.getElementById("expr"), R = document.getElementById("res"), H = document.getElementById("hist");
   let hist = [];
   const ins = (t) => { E.textContent += t; preview(); E.focus(); };
   async function calc(expr) {
     if (!expr.trim()) return null;
     try {
-      const r = await (await fetch("/plugin/calculator/eval?e=" + encodeURIComponent(expr))).json();
+      const r = await (await fetch(BASE + "/eval?e=" + encodeURIComponent(expr))).json();
       return r.ok ? r.result : null;
     } catch { return null; }
   }

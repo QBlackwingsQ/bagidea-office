@@ -4,6 +4,11 @@
 // webview can decode mp3); agents and the UI both mutate state through
 // commands, so an agent saying "loop this playlist" really controls the
 // panel that's open in front of the user.
+//
+// Built on the BagIdea Office plugin template — uses ctx.pluginDir (bundled
+// tracks), ctx.dataDir (state) and ctx.broadcast (live panel sync), and shows
+// custom routes incl. ranged audio streaming + raw-body upload. The template
+// (bagidea-office-template) documents the full ctx API.
 const fs = require("fs");
 const path = require("path");
 
