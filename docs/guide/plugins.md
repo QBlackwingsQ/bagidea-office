@@ -1,99 +1,173 @@
-# Plugins — ส่วนขยายของออฟฟิศ
+# Writing a BagIdea Office plugin
 
-ระบบ plugin ให้คุณ (และคนอื่นในอนาคต) เพิ่มความสามารถใหม่ให้โปรแกรมได้จริง —
-ทั้ง **แผง UI**, **HTTP routes ฝั่ง server**, และ **คำสั่งที่ agents สั่งได้**
+A **plugin** extends the office in real ways — a panel the user opens, HTTP
+routes, and **commands agents can drive**. Plugins are plain folders; no build
+step, zero dependencies. Drop one in `plugins/` and reload.
 
-เปิดดู/จัดการที่ปุ่ม 🧩 บน header
+This guide is written so a **person** OR an **agent** can build a working plugin
+from scratch. The shipped `music` and `calculator` plugins are full examples.
 
-## โครงสร้าง plugin
+---
 
-วางโฟลเดอร์ไว้ใน `plugins/<id>/`
+## 1. Anatomy
 
 ```
-plugins/myplugin/
-├── plugin.json     ← manifest (จำเป็น)
-├── index.js        ← โค้ดฝั่ง server (ไม่บังคับ)
-├── panel.html      ← แผง UI (ไม่บังคับ)
-└── data/           ← ที่เก็บข้อมูลของ plugin (สร้างให้อัตโนมัติ)
+plugins/<id>/
+  plugin.json     ← manifest (required)
+  index.js        ← server-side logic (optional)
+  panel.html      ← an overlay UI the user opens (optional)
+  data/           ← your plugin's private storage (gitignored, auto-created)
+  static/...      ← any files panel.html loads (served at /plugin/<id>/static/…)
 ```
 
-### plugin.json
+A plugin needs **only** `plugin.json`. Add `index.js` for server power, and/or
+`panel.html` for a UI.
+
+---
+
+## 2. `plugin.json`
 
 ```json
 {
-  "id": "myplugin",
-  "name": "🧰 My Plugin",
+  "id": "calculator",
+  "name": "🧮 Calculator",
   "version": "1.0.0",
-  "description": "อธิบายสั้นๆ",
+  "description": "What it does, in one line.",
   "panel": "panel.html",
   "commands": [
-    { "name": "do", "args": "<x>", "desc": "ทำอะไรสักอย่าง" }
+    { "name": "calc", "args": "<expression>", "desc": "Evaluate a math expression" }
   ],
-  "needsKeys": []
+  "needsKeys": [],
+  "enabled": true
 }
 ```
 
-### index.js (ฝั่ง server)
+| field | meaning |
+|---|---|
+| `id` | unique slug (defaults to the folder name) |
+| `name` | shown in the UI / `bagidea plugins` |
+| `panel` | the HTML file to open as a panel (omit for headless plugins) |
+| `commands` | what **agents** can call — each `{name, args, desc}` |
+| `needsKeys` | main API key names this plugin needs (informational) |
+| `enabled` | set `false` to ship-but-disable |
+
+---
+
+## 3. `index.js` — the server side
+
+`index.js` exports a factory that receives `ctx` and returns handlers:
 
 ```js
-module.exports = (ctx) => {
-  // ctx = { broadcast, reg, workspace, dataDir, pluginDir, manifest, log }
-  return {
-    // agents/UI เรียก POST /plugin/myplugin/cmd {cmd, args}
-    onCommand(cmd, args, reply) {
-      if (cmd === "do") return reply({ ok: true, msg: "ทำแล้ว: " + args });
-      return reply({ ok: false, msg: "ไม่รู้จักคำสั่ง" });
+module.exports = (ctx) => ({
+  // Called when an agent or the panel POSTs /plugin/<id>/cmd {cmd, args}.
+  onCommand(cmd, args, reply) {
+    if (cmd === "calc") return reply({ ok: true, result: 42 });
+    return reply({ ok: false, msg: "unknown command" });
+    // async is fine: return a Promise, or call reply() later.
+  },
+  // Custom HTTP routes at /plugin/<id>/<name>
+  routes: {
+    eval(req, res, { readBody, readBodyRaw }) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
     },
-    // custom routes: GET/POST /plugin/myplugin/<key>
-    routes: {
-      hello(req, res) { res.writeHead(200); res.end("hi"); },
-    },
-  };
-};
+  },
+});
 ```
 
-- `reply(obj)` ตอบกลับ (เรียก async ก็ได้ หรือ return ค่า/Promise)
-- `ctx.broadcast(evt, false)` ส่ง event ไปทุก client (Godot + overlay) — `false` = ไม่ journal
-- `ctx.dataDir` โฟลเดอร์เก็บ state ถาวรของ plugin
+### `ctx` — what a plugin can reach
+| field | use |
+|---|---|
+| `ctx.broadcast(event, persist?)` | push a live event to every panel + the office feed (WS). Use `{type:"plugin.event", plugin:"<id>", ...}` |
+| `ctx.reg` | the office registry (agents, roles, settings) |
+| `ctx.workspace` | absolute path to the agents' workspace |
+| `ctx.dataDir` | `plugins/<id>/data` — your private storage |
+| `ctx.pluginDir` | your plugin's folder (for `static/`, bundled files) |
+| `ctx.manifest` | your parsed `plugin.json` |
+| `ctx.log(msg)` | write to the daemon log |
+| `ctx.runClaude(agentId, prompt, opts?)` | run a real Claude Code turn (advanced) |
 
-### panel.html (แผง UI)
+### Built-in HTTP routes (free, no code)
+- `GET /plugin/<id>/panel` → serves your `panel.html`
+- `GET /plugin/<id>/static/<file>` → serves files from the plugin folder
+- `POST /plugin/<id>/cmd` `{cmd,args}` → calls your `onCommand`
 
-หน้า HTML ธรรมดา เปิดใน iframe เมื่อกด ▶ — เรียก API ของตัวเองได้
-(`/plugin/<id>/...`) และ subscribe `ws://127.0.0.1:8787/ws` เพื่ออัปเดตสด
-(กรอง `e.type === "plugin.event" && e.plugin === "<id>"`)
+`reply(data)` sends JSON back. For binary/streaming, write to `res` directly in a
+custom route (see `music`'s `track` route — it streams audio with HTTP Range; and
+its `upload` route accepts a raw file body via `readBodyRaw`).
 
-## agents ใช้ plugin ได้เอง
+---
 
-ทุก plugin ที่มี `commands` จะถูกบอกให้ agents รู้อัตโนมัติ (ใน prompt) —
-สั่งในแชทได้เลย เช่น *"เปิดเพลงให้หน่อย"* แล้วน้องจะ:
+## 4. `panel.html` — the UI
 
+A normal HTML file. It runs in the overlay webview and can call your routes:
+
+```js
+// read state
+const s = await (await fetch("/plugin/<id>/state")).json();
+// send a command (the SAME path agents use)
+await fetch("/plugin/<id>/cmd", { method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ cmd: "play", args: "1" }) });
+// live updates when an AGENT changes things
+const ws = new WebSocket("ws://127.0.0.1:8787/ws");
+ws.onmessage = (m) => { const e = JSON.parse(m.data);
+  if (e.type === "plugin.event" && e.plugin === "<id>") refresh(); };
 ```
-curl -s -X POST http://127.0.0.1:8787/plugin/music/cmd \
-  -H "content-type: application/json" -d '{"cmd":"play","args":""}'
+
+Keep the dark theme (`background:#0c1322; color:#dbe7ff; accent #5ec8ff`) so it
+matches the office.
+
+---
+
+## 5. Agents and plugins
+
+Every plugin's `commands` are injected into agent prompts automatically (see
+`plugins.js → agentNote()`), so an agent can drive your plugin with a Bash call:
+
+```bash
+curl -s -X POST http://127.0.0.1:8787/plugin/calculator/cmd \
+  -H "content-type: application/json" -d '{"cmd":"calc","args":"2*(3+4)^2"}'
 ```
 
-## plugin ที่ติดมาให้
+Because the panel and agents both go through `/cmd`, an agent saying *"loop the
+playlist"* really controls the panel open in front of the user.
 
-### 🎵 Music Player (`plugins/music`)
-เครื่องเล่นเพลงในออฟฟิศ — วางไฟล์ `.mp3` ไว้ใน `plugins/music/tracks/` แล้วเปิดแผง 🧩
-เล่น/หยุด/ถัดไป/วนเพลย์ลิสต์/ปรับเสียงได้ และ **agents สั่งได้** ("เปิดเพลง",
-"เปลี่ยนเพลง", "วน playlist ไว้") — เล่นเบื้องหลังระหว่างทำงานได้สบายๆ
+**An agent can also CREATE a plugin**: write the folder + files under `plugins/`,
+then `curl -s -X POST http://127.0.0.1:8787/plugins/reload -H "x-bagidea-ui: 1"`.
+Point the agent at this guide and it has everything it needs.
 
-## ติดตั้ง plugin (ง่ายสุด)
+---
 
-ในหน้า 🧩 มีช่อง **📦 ติดตั้ง plugin จากลิงก์ GitHub** — วางลิงก์ repo ของ plugin
-(เช่น `https://github.com/you/my-plugin`) แล้วกด **⬇ ติดตั้ง** — ระบบ `git clone`
-ลงโฟลเดอร์ `plugins/` ให้อัตโนมัติแล้วโหลดทันที (ต้องมี `plugin.json` ใน repo)
+## 6. Installing / removing
 
-ถอนการติดตั้งได้ด้วยปุ่ม 🗑 ข้าง plugin (plugin หลักลบไม่ได้)
+- **Local**: drop the folder in `plugins/`, then restart, or `POST /plugins/reload`
+  (the 🔄 button on the 🧩 panel).
+- **From GitHub**: `bagidea plugin install https://github.com/you/your-plugin`
+  (clones into `plugins/`; the repo must contain `plugin.json`).
+- **Remove**: `bagidea plugin remove <id>` (or the 🗑 button; core plugins are
+  protected).
 
-## เพิ่มเอง / โหลดใหม่
+---
 
-วางโฟลเดอร์ plugin เองใน `plugins/` แล้วกด 🔄 ในหน้า 🧩 (หรือ `POST /plugins/reload`)
-— ไม่ต้องรีสตาร์ทโปรแกรม
+## 7. Two worked examples
 
-## เขียน plugin แยก repo
+- **🎵 `plugins/music`** — playlist with upload/remove, play/pause/next/prev/loop/
+  volume, a seek bar, audio streamed with HTTP Range, agent commands, live WS sync.
+- **🧮 `plugins/calculator`** — a safe shunting-yard math engine (no `eval`):
+  basic arithmetic + trig/logs/powers/roots/factorial/constants, shared by the
+  panel UI and the `calc` agent command.
 
-ทำได้ — เขียนเป็น repo แยกแล้วให้ผู้ใช้ clone ลงโฟลเดอร์ `plugins/` ของเขา
-(โครงสร้างเหมือนข้างบน) ในอนาคตจะมี plugin marketplace สำหรับเรียกดู/ติดตั้งจาก
-registry กลาง (ดู REQUIREMENT.md ข้อ 11)
+Read those two folders next to this guide — they cover every pattern here.
+
+---
+
+## 8. Checklist
+
+- [ ] `plugin.json` with a unique `id`, `name`, `description`
+- [ ] (optional) `index.js` exporting `(ctx) => ({ onCommand?, routes? })`
+- [ ] (optional) `panel.html` for a UI
+- [ ] commands listed in the manifest so agents can use them
+- [ ] private state in `ctx.dataDir`, never hard-coded paths
+- [ ] broadcast `plugin.event` so open panels stay live
+- [ ] test: `POST /plugin/<id>/cmd` returns what you expect

@@ -65,8 +65,12 @@ module.exports = function initPlugins(ctx) {
         cmds.push(`- ${p.manifest.name} → curl -s -X POST http://127.0.0.1:8787/plugin/${p.manifest.id}/cmd ` +
           `-H "content-type: application/json" -d "{\\"cmd\\":\\"${c.name}\\",\\"args\\":\\"...\\"}" : ${c.desc}`);
     }
-    if (!cmds.length) return "";
-    return `\n<office-plugins>\nส่วนขยายที่คุณสั่งงานได้ (เรียกผ่าน Bash):\n${cmds.join("\n")}\n</office-plugins>`;
+    const create = `You can also BUILD a new plugin: create plugins/<id>/ with a ` +
+      `plugin.json (+ optional index.js / panel.html), then ` +
+      `curl -s -X POST http://127.0.0.1:8787/plugins/reload -H "x-bagidea-ui: 1". ` +
+      `Full spec: docs/guide/plugins.md`;
+    if (!cmds.length) return `\n<office-plugins>\n${create}\n</office-plugins>`;
+    return `\n<office-plugins>\nExtensions you can drive (via Bash):\n${cmds.join("\n")}\n\n${create}\n</office-plugins>`;
   }
 
   // HTTP dispatch for /plugin/<id>/...  — returns true if handled.
