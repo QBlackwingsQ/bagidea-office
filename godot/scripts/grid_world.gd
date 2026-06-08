@@ -45,7 +45,7 @@ const ROOM_DEFS := {
 # central plus-corridor that links the four door gaps stays clear — agents and
 # the swap never drop furniture in a doorway. (cell is 10.5 x 8 → half 5.25 x 4)
 const ROOM_ANCHORS := {
-	"exec":  {"exec_c": Vector2(0, 0), "ceo_desk": Vector2(-3.0, -2.5), "lead_desk": Vector2(3.0, -2.5),
+	"exec":  {"exec_c": Vector2(0, 0), "ceo_desk": Vector2(-3.0, -1.1), "lead_desk": Vector2(3.0, -2.5),
 		"pace_a": Vector2(-3.0, 2.4), "pace_b": Vector2(3.0, 2.4)},
 	"ops":   {"ops_c": Vector2(0, 0), "desk1": Vector2(-4.0, -2.5), "desk2": Vector2(-2.0, -2.5),
 		"desk3": Vector2(2.0, -2.5), "desk4": Vector2(4.0, -2.5), "desk5": Vector2(-2.5, 2.4),
@@ -342,9 +342,11 @@ func _furnish(room: Node3D, kind: String, accent: String) -> void:
 	var sw := Vector3(-3.0, 0, 2.4); var se := Vector3(3.0, 0, 2.4)
 	match kind:
 		"exec":
-			# CEO desk (NW) + Director desk (NE), orrery + plant in front corners
-			_desk_pod(room, nw, 180.0, kit)
-			if kit: _kit(room, "Command_Console", nw + Vector3(0, 0, -0.4), 0.0, 0.5)
+			# CEO desk pulled forward off the back wall so there's a walkway
+			# behind it; Director desk (NE); orrery + plant in front corners
+			var ceo_p := Vector3(-3.0, 0, -1.9)
+			_desk_pod(room, ceo_p, 180.0, kit)
+			if kit: _kit(room, "Command_Console", ceo_p + Vector3(0, 0, -0.5), 0.0, 0.5)
 			_desk_pod(room, ne, 180.0, kit)
 			if kit:
 				_kit(room, "Orrery", sw, 0.0, 0.35)

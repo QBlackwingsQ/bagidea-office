@@ -606,10 +606,11 @@ func _build_ui() -> void:
 	var bbtn := Button.new(); bbtn.text = L("🏷 Billboard", "🏷 ป้าย"); bbtn.pressed.connect(_import_billboard); bh.add_child(bbtn)
 	var save := Button.new(); save.text = L("💾 Save", "💾 บันทึก"); save.pressed.connect(_save); bh.add_child(save)
 	bh.add_child(VSeparator.new())
-	var lcur := "🌐"
-	for e in LANGS:
-		if e[0] == ui_lang: lcur = String(e[1])
-	var lng := Button.new(); lng.text = lcur; lng.pressed.connect(_toggle_lang); bh.add_child(lng)
+	var lng := OptionButton.new(); lng.name = "LangPick"
+	for i in LANGS.size():
+		lng.add_item("🌐 " + String(LANGS[i][1]))
+		if LANGS[i][0] == ui_lang: lng.select(i)
+	lng.item_selected.connect(_on_lang_picked); bh.add_child(lng)
 	ui.add_child(bar)
 
 	# ── LEFT COLUMN — fills the left edge top-to-bottom: palette (scrolls) on
@@ -695,15 +696,13 @@ func _build_ui() -> void:
 	var toast := Label.new(); toast.name = "Toast"; toast.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	toast.position = Vector2(-120, -48); ui.add_child(toast)
 
-func _toggle_lang() -> void:
-	var i := 0
-	for k in LANGS.size():
-		if LANGS[k][0] == ui_lang: i = k; break
-	ui_lang = String(LANGS[(i + 1) % LANGS.size()][0])   # cycle en → th → zh → ja
+func _on_lang_picked(idx: int) -> void:
+	if idx < 0 or idx >= LANGS.size(): return
+	ui_lang = String(LANGS[idx][0])
 	var req := HTTPRequest.new(); add_child(req)
 	req.request_completed.connect(func(_a, _b, _c, _d): req.queue_free())
 	req.request("http://127.0.0.1:8787/registry/lang", ["content-type: application/json"],
-		HTTPClient.METHOD_POST, JSON.stringify({ "lang": ui_lang }))
+		HTTPClient.METHOD_POST, JSON.stringify({ "lang": ui_lang }))   # persist for the whole office
 	_rebuild_ui()
 
 func _rebuild_ui() -> void:
@@ -715,7 +714,12 @@ func _rebuild_ui() -> void:
 func _import_billboard() -> void:
 	var menu := PopupMenu.new()
 	add_child(menu)
-	menu.add_item(L("📁 Upload new image…", "📁 อัปโหลดรูปใหม่…"), 0)
+	# always-visible size hint at the top
+	menu.add_item(L("📐 Best: 1380×207 px (ratio ~6.7:1, wide banner)",
+		"📐 แนะนำ: 1380×207 px (อัตราส่วน ~6.7:1 แนวยาว)"))
+	menu.set_item_disabled(menu.item_count - 1, true)
+	menu.add_separator()
+	menu.add_item(L("📁 Upload new image…", "📁 อัปโหลดรูปใหม่…"), 100)
 	var imgs: Array = []
 	for a in library:
 		if String(a.get("kind", "")) == "image":
@@ -724,13 +728,13 @@ func _import_billboard() -> void:
 	if imgs.is_empty():
 		menu.add_separator(L("(library has no images yet)", "(ยังไม่มีรูปใน library)"))
 	menu.id_pressed.connect(func(id):
-		if id == 0:
+		if id == 100:
 			_pick_file(PackedStringArray(["*.png", "*.jpg", "*.jpeg", "*.webp"]), func(p):
 				_register_asset(p, "image"); _set_billboard(p))
 		elif id >= 1 and id <= imgs.size():
 			_set_billboard(String(imgs[id - 1].get("path", "")))
 		menu.queue_free())
-	menu.popup(Rect2i(Vector2i(230, 92), Vector2i(240, 10)))
+	menu.popup(Rect2i(Vector2i(230, 92), Vector2i(280, 10)))
 
 func _set_billboard(p: String) -> void:
 	if p == "": return
