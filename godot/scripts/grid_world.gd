@@ -37,11 +37,42 @@ const ROOM_DEFS := {
 	"dorm":    {"label": "DORM",      "floor": "1c1e2c", "accent": "9ab0ff"},
 }
 
+# agent anchors per room kind — LOCAL offset from cell centre (y = 0.86 floor).
+# Names are exactly those agent_manager.gd already targets, so the brain is
+# untouched: only WHERE each anchor sits is now grid-driven.
+const ROOM_ANCHORS := {
+	"exec":  {"exec_c": Vector2(0, 0), "ceo_desk": Vector2(0, -2.3), "lead_desk": Vector2(2.2, -2.3),
+		"pace_a": Vector2(-1.5, -0.6), "pace_b": Vector2(1.5, -0.6)},
+	"ops":   {"ops_c": Vector2(0, 0), "desk1": Vector2(-2.3, -2.0), "desk2": Vector2(0, -2.0),
+		"desk3": Vector2(2.3, -2.0), "desk4": Vector2(-2.3, 1.4), "desk5": Vector2(0, 1.4),
+		"desk6": Vector2(2.3, 1.4), "ap1": Vector2(-2.3, 0), "ap2": Vector2(2.3, 0)},
+	"server": {"server_c": Vector2(0, 0)},
+	"lobby": {"lobby_c": Vector2(0, 0), "spawn": Vector2(0, 3.0), "sec_c": Vector2(-2.4, -2.2),
+		"sec_window": Vector2(-2.4, -1.0)},
+	"cafe":  {"cafe_c": Vector2(0, 0), "cafe_s1": Vector2(0.6, -1.4), "cafe_s2": Vector2(1.6, 1.8)},
+	"meeting": {"meeting_c": Vector2(0, 0), "m_s1": Vector2(-1.3, -1.3), "m_s2": Vector2(1.3, -1.3),
+		"m_s3": Vector2(-1.3, 1.3), "m_s4": Vector2(1.3, 1.3)},
+	"rec":   {"rec_c": Vector2(0, 0), "rec_s1": Vector2(-1.4, -0.5), "rec_s2": Vector2(0, 1.4),
+		"rec_s3": Vector2(-1.4, 0.6), "rec_s4": Vector2(1.6, 1.4)},
+	"dormx": {"dormx_c": Vector2(0, 0), "b3": Vector2(-2.7, -1.4), "b4": Vector2(-0.9, -1.4),
+		"b5": Vector2(0.9, -1.4), "b6": Vector2(2.7, -1.4), "b7": Vector2(-1.8, 1.4), "b8": Vector2(1.8, 1.4)},
+	"dorm":  {"dorm_c": Vector2(0, 0), "bed1": Vector2(-1.8, -1.5), "bed2": Vector2(1.8, -1.5)},
+}
+const FLOOR_Y := 0.86
+
 var _cell_node: Array = []      # slot index → container Node3D
 var _cell_center: Array = []    # slot index → Vector3 (fixed)
 
+var WP := {}                    # anchor name → world Vector3 (live)
+var _anchor_slot := {}          # anchor name → current slot
+var _anchor_local := {}         # anchor name → Vector2 local offset
+var astar := AStar3D.new()
+var _wp_ids := {}
+var _next_id := 0
+
 func _ready() -> void:
 	_build()
+	_build_graph()
 
 func slot_center(slot: int) -> Vector3:
 	var c := slot % GRID_COLS
@@ -68,7 +99,83 @@ func _build() -> void:
 		room.position = center
 		add_child(room)
 		_cell_node.append(room)
-		_build_room(room, String(room_order[slot]))
+		var kind := String(room_order[slot])
+		_build_room(room, kind)
+		_register_anchors(slot, kind)
+
+## Record this slot's agent anchors (world + local + slot) from ROOM_ANCHORS.
+func _register_anchors(slot: int, kind: String) -> void:
+	var center: Vector3 = _cell_center[slot]
+	for aname in ROOM_ANCHORS.get(kind, {}):
+		var loc: Vector2 = ROOM_ANCHORS[kind][aname]
+		_anchor_local[aname] = loc
+		_anchor_slot[aname] = slot
+		WP[aname] = center + Vector3(loc.x, FLOOR_Y, loc.y)
+
+# ----------------------------------------------------------------- A* graph
+## Skeleton: a hub per slot + a door node on each shared wall. Room anchors hang
+## off their slot's hub. Swapping a room re-homes its anchors to the new hub.
+func _build_graph() -> void:
+	# hubs at slot centres
+	for slot in range(GRID_COLS * GRID_ROWS):
+		_add_point("hub_%d" % slot, _cell_center[slot] + Vector3(0, FLOOR_Y, 0))
+	# door nodes between orthogonally adjacent slots, connecting the two hubs
+	for slot in range(GRID_COLS * GRID_ROWS):
+		var c := slot % GRID_COLS
+		var r := slot / GRID_COLS
+		if c + 1 < GRID_COLS:
+			_link_slots(slot, slot + 1)
+		if r + 1 < GRID_ROWS:
+			_link_slots(slot, slot + GRID_COLS)
+	# anchors → their slot hub
+	for aname in WP:
+		_add_point(aname, WP[aname])
+		astar.connect_points(_wp_ids[aname], _wp_ids["hub_%d" % _anchor_slot[aname]])
+
+func _link_slots(a: int, b: int) -> void:
+	var mid: Vector3 = (_cell_center[a] + _cell_center[b]) * 0.5 + Vector3(0, FLOOR_Y, 0)
+	var dn := "door_%d_%d" % [a, b]
+	_add_point(dn, mid)
+	astar.connect_points(_wp_ids["hub_%d" % a], _wp_ids[dn])
+	astar.connect_points(_wp_ids[dn], _wp_ids["hub_%d" % b])
+
+func _add_point(name: String, pos: Vector3) -> void:
+	_wp_ids[name] = _next_id
+	astar.add_point(_next_id, pos)
+	_next_id += 1
+
+func _nearest(pos: Vector3) -> int:
+	var best := -1; var best_d := INF
+	for name in _wp_ids:
+		var d: float = pos.distance_to(astar.get_point_position(_wp_ids[name]))
+		if d < best_d: best_d = d; best = _wp_ids[name]
+	return best
+
+func path_to(from_pos: Vector3, target: String) -> Array:
+	if not _wp_ids.has(target): return []
+	var pts := astar.get_point_path(_nearest(from_pos), _wp_ids[target])
+	var out: Array = []
+	for p in pts: out.append(p)
+	if out.size() > 1 and from_pos.distance_to(out[0]) < 0.4: out.pop_front()
+	return out
+
+func path_between(from_pos: Vector3, to_pos: Vector3) -> Array:
+	var pts := astar.get_point_path(_nearest(from_pos), _nearest(to_pos))
+	var out: Array = []
+	for p in pts: out.append(p)
+	if out.size() > 1 and from_pos.distance_to(out[0]) < 0.4: out.pop_front()
+	out.append(to_pos)
+	return out
+
+## Re-home a room's anchors after its container moved to `slot`.
+func _rehome_anchors(slot: int) -> void:
+	var center: Vector3 = _cell_center[slot]
+	for aname in _anchor_slot:
+		if _anchor_slot[aname] == slot:
+			var loc: Vector2 = _anchor_local[aname]
+			WP[aname] = center + Vector3(loc.x, FLOOR_Y, loc.y)
+			if _wp_ids.has(aname):
+				astar.set_point_position(_wp_ids[aname], WP[aname])
 
 ## Swap two rooms between their slots — the whole container (walls, floor,
 ## furniture) glides to the other slot. Agent anchors ride along because they
@@ -82,6 +189,27 @@ func swap_slots(a: int, b: int) -> void:
 	nb.position = _cell_center[a]
 	_cell_node[a] = nb; _cell_node[b] = na
 	var tmp = room_order[a]; room_order[a] = room_order[b]; room_order[b] = tmp
+	# move each room's anchors to the other slot (re-home position + re-wire the
+	# graph edge from the old hub to the new one)
+	var a_an: Array = []; var b_an: Array = []
+	for an in _anchor_slot:
+		if _anchor_slot[an] == a: a_an.append(an)
+		elif _anchor_slot[an] == b: b_an.append(an)
+	for an in a_an: _reslot_anchor(an, a, b)
+	for an in b_an: _reslot_anchor(an, b, a)
+
+func _reslot_anchor(aname: String, from_slot: int, to_slot: int) -> void:
+	_anchor_slot[aname] = to_slot
+	var center: Vector3 = _cell_center[to_slot]
+	var loc: Vector2 = _anchor_local[aname]
+	WP[aname] = center + Vector3(loc.x, FLOOR_Y, loc.y)
+	if _wp_ids.has(aname):
+		astar.set_point_position(_wp_ids[aname], WP[aname])
+		var from_hub: int = _wp_ids["hub_%d" % from_slot]
+		var to_hub: int = _wp_ids["hub_%d" % to_slot]
+		if astar.are_points_connected(_wp_ids[aname], from_hub):
+			astar.disconnect_points(_wp_ids[aname], from_hub)
+		astar.connect_points(_wp_ids[aname], to_hub)
 
 ## Build one room's contents at LOCAL origin (cell centre = 0,0,0).
 func _build_room(room: Node3D, kind: String) -> void:
