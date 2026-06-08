@@ -57,7 +57,7 @@ Not a dashboard. Not a chat window. A **world** that renders the true state of y
 - **MMO-style nameplates** on a crisp 2D HUD: portrait, name, role/status, live state pill (IDLE/WORKING/MEETING/BLOCKED/OFFLINE), distance-scaled — with **rank dressing**: the CEO's plate is gold with a pixel crown, the Director's is bright blue with a lead star
 - **Event FX**: pixel-art flipbooks pop above characters — ✅ on task done, ❌ on failure, ❗ at Security, 👍/👎 on decisions, 🎵 when speaking, golden burst on a new skill, sci-fi warps on hire/fire
 - **Equippable auras**: an elemental magic ring (fire/ice/nature/arcane/shadow/gold) under any character, picked in the agent editor — the CEO can wear one too
-- **The Ghost Deck**: a floating glass platform above the east wing with 8 desks — when an agent splits into sub-agents, translucent **ghost clones** of it materialize, float up through the roof (no stairs — they're ghosts), work at a desk with live status plates, then glide home and dissolve back into their owner
+- **The Ghost Deck**: a floating glass platform (12 desks, **movable from the Office Editor**) reached by a glass staircase — when an agent splits into sub-agents, translucent **ghost clones** materialize, hurry up the stairs, work at a desk with live status plates, then glide home and dissolve back into their owner. Targets resolve to the deck's **live** position, so ghosts re-seat instantly even mid-task when you move the deck or swap rooms
 - The idle **Director makes rounds** through the office instead of standing still; the CEO paces the executive floor (that's you)
 - **Mission Control board** in-world: one card per running task, colored by state; lobby status totem shows daemon connectivity (truth, not decoration)
 - Branded boot: a transparent floating logo splash + a pulsing circular logo card — never a black box
@@ -70,7 +70,7 @@ Not a dashboard. Not a chat window. A **world** that renders the true state of y
 - **🌍 Official website** in [`web/`](web/) — landing page + browsable docs, deployable to any static host
 
 ### 🎤 Voice, channels, memory & media (2026-06)
-- **Voice in / out**: hold-to-record in the webview → **OpenAI Whisper / Gemini** transcription (no Windows dictation panel); **F6** speaks a command straight to the CEO; agents can be given **anime-style Gemini TTS voices** (8 presets, per-agent, gimmick `SPEAK:` announcements); **📞 realtime voice chat** bridges your mic to **Gemini Live** with the office's own knowledge in context
+- **Voice in / out**: hold-to-record in the webview → **OpenAI Whisper / Gemini** transcription (no Windows dictation panel); **F6** speaks a command straight to the CEO; agents can be given **Gemini TTS voices** — **16 presets split clearly ♀ / ♂** (8 each), each its own emotion/style, per-agent, gimmick `SPEAK:` announcements; **📞 realtime voice chat** (the **main agent only**) bridges your mic to **Gemini Live** in the main agent's assigned voice (or a sensible default), with the office's own knowledge in context
 - **Channels**: connect **Telegram / Discord / LINE** — messages enter the CEO flow, the Director answers back on the same channel
 - **Hermes-style memory** (token-lean): shared `workspace/OFFICE.md` + per-agent `workspace/memory/<id>.md`, distilled automatically after real work; fresh sessions get pointers + a short tail, full recall on demand
 - **Main API keys + feature gates**: `OPENAI_API_KEY` / `GEMINI_API_KEY` are first-class — voice/TTS/image/realtime grey out with guidance until set; an extra-key vault feeds agents' own env
@@ -110,8 +110,11 @@ When an agent needs a tool you have **not** granted:
 3. You click **Allow / ✓✓ Forever / Deny** — deny (or 50s timeout) makes the agent visibly re-plan; *forever* adds the tool to that agent's grants so it never asks again
 4. Approve, and the tool actually executes
 
-Tools already granted in the agent's profile are approved instantly and logged.
-This is real: the PreToolUse hook long-polls the daemon until you decide.
+Tools already granted in the agent's profile (or "✓✓ forever" rules) are approved
+instantly and logged — and the agent **doesn't even leave its desk**: it waits a
+short grace to confirm a trip is actually needed, so granted tools never make it
+twitch toward Security. This is real: the PreToolUse hook long-polls the daemon
+until you decide.
 
 ### 💬 Overlay (Layer 2)
 Served by the daemon at `http://127.0.0.1:8787/` — best experienced through the included **native Rust shell**:
@@ -133,7 +136,7 @@ Served by the daemon at `http://127.0.0.1:8787/` — best experienced through th
 
 ```
 ┌─ Overlay (Rust shell / browser) ────────────┐   ┌─ Godot 4 Wallpaper ────────────┐
-│  chat·threads · settings · map · approvals  │   │  10 zones · countryside        │
+│  chat·threads · settings · map · approvals  │   │  swappable 3×3 grid·countryside│
 │            ▲ WebSocket /ws                  │   │  agents walk (A*) · FX · clock │
 └────────────┼────────────────────────────────┘   │        ▲ WebSocket /ws  ▼ /pos │
              │                                    └────────┼────────────────────────┘
@@ -163,18 +166,24 @@ Three independent processes: the **daemon** keeps agents running even if renderi
 │   └── sessions.json              … chat threads + history (generated, gitignored)
 ├── godot/                     ← Layer 1 (Godot 4.6 project)
 │   ├── scenes/office_floor.tscn   … main scene (env: sky IBL, SSR, cinema pass)
-│   ├── scripts/world_builder.gd   … procedural office + countryside + clock + clouds
-│   ├── scripts/agent_manager.gd   … events → characters choreography + FX routing
-│   ├── scripts/agent_sprite.gd    … spritesheet characters, auras, identity
+│   ├── scripts/grid_world.gd      … the swappable 3×3 room grid (rooms/furniture/A*/swap)
+│   ├── scripts/world_builder.gd   … shares the grid + sky/countryside/clock/billboard/Ghost Deck
+│   ├── scripts/agent_manager.gd   … events → characters choreography + FX + camera focus
+│   ├── scripts/agent_sprite.gd    … spritesheet characters, auras, identity, seating facing
+│   ├── scripts/map_editor.gd      … the 3D Office Editor (room swap + furniture/import)
+│   ├── scripts/camera_rig.gd      … cinematic drift + interest-shot focus
 │   ├── scripts/hud.gd             … nameplates (rank dressing), HUD FX, whiteboard
-│   ├── scripts/fx_factory.gd      … pixel-FX flipbook player
-│   ├── scripts/aura_factory.gd    … elemental aura rings (from Binbun shaders)
-│   ├── scripts/bird_sprite.gd / dog_sprite.gd / rec_ball.gd … ambient life
-│   ├── scripts/office_floor.gd    … day cycle, boot, wallpaper/screenshot modes
-│   ├── scripts/event_client.gd    … WebSocket client
+│   ├── scripts/fx_factory.gd / aura_factory.gd … pixel-FX flipbooks + elemental auras
+│   ├── scripts/cat_sprite.gd / dog_sprite.gd / bird_sprite.gd / rec_ball.gd … ambient life
+│   ├── scripts/office_floor.gd    … day cycle, boot, wallpaper/editor/screenshot modes
+│   ├── scripts/event_client.gd / layout_loader.gd … WS client + Office Editor layout
 │   ├── shaders/                   … cinema focus, grass wind, god rays, grain…
 │   └── assets/BinbunVFX_Vol2/     … Elemental Magic FX (CC0 — bundled)
 ├── shell/                     ← THE program (Rust, wry + tao): one exe runs it all
+├── cli/bagidea.js             ← the `bagidea` command (talks to the daemon)
+├── plugins/                   ← core plugins ship here (🎵 music, 🧮 calculator); installs land here
+├── installer/                 ← install.ps1 (clone+build) · update.ps1 · build-release.ps1
+├── web/                       ← official website (landing + browsable docs, static host)
 ├── tools/wallpaper.ps1        ← manual attach/detach (the shell does this natively)
 ├── workspace/                 ← cwd for adapter-spawned Claude sessions
 │   └── .claude/settings.json      … PreToolUse permission hook wiring
@@ -311,8 +320,10 @@ node daemon\server.js
 ⚙ → AGENTS → **Hire a new agent**: pick one of 12 faces, an aura, a job title,
 then either write the system prompt yourself or type a one-line brief
 (any language) and hit **✨ Draft** — a real Claude call writes the persona.
-Assign skills and tools with chips. Everything is editable later; deleting an
-agent warps them out of the office. `main` and `ceo` are protected.
+Assign skills (pick from the **9 builtin capability packs** or your own) and
+tools with chips. Everything is editable later; deleting an agent warps them out
+of the office. `main` and `ceo` are protected. The office caps at **18 staff**
+(the CEO isn't counted) — sub-agent 👻 ghosts cover parallel load beyond that.
 
 ### Chat
 Click a face in the rail (or on the 🗺 map) and type. Each agent keeps
