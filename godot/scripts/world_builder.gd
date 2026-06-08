@@ -1189,8 +1189,6 @@ func _build_geometry() -> void:
 	_billboard(Vector3(-3.5, 5.2, -12.1), -24.0)
 	# mission-control board on the OPS slot's north wall
 	_board_x = 0.0; _board_z = -11.6; _board_y0 = 1.7
-	var mctl := _label("MISSION CONTROL", Vector3(0.0, 2.2, -11.7), 44, Color(0.6, 0.85, 1.0))
-	mctl.pixel_size = 0.0035
 	# recreation life: office cat (or fallback dog) + football, in the rec slot
 	var _catg := load("res://scripts/cat_sprite.gd")
 	pet = Sprite3D.new()

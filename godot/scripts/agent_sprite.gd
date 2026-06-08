@@ -390,7 +390,10 @@ func set_status(text: String) -> void:
 	if _hud:
 		_hud.set_status(self, text)
 
+var _hurry := false   # has work to do → moves at double pace (ghosts already 4x)
+
 func set_state(state: String) -> void:
+	_hurry = state == "working" or state == "meeting"
 	if _hud:
 		_hud.set_state(self, state)
 
@@ -414,8 +417,8 @@ func walk_to(points: Array) -> float:
 	_walk_tween = create_tween()
 	var from := position
 	var total := 0.0
-	# Ghosts hurry — same walkable graph as everyone, 4x the pace.
-	var speed: float = WALK_SPEED * 4.0 if is_ghost else WALK_SPEED
+	# Ghosts hurry 4x; a working agent hurries 2x; idle strolling stays 1x.
+	var speed: float = WALK_SPEED * (4.0 if is_ghost else (2.0 if _hurry else 1.0))
 	for p in points:
 		var leg_time: float = max(from.distance_to(p) / speed, 0.05)
 		_walk_tween.tween_property(self, "position", p, leg_time)

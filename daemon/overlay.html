@@ -526,19 +526,23 @@
   .perm .deny { color: #ff5448; border-color: #ff544855; }
 
   footer {
-    display: flex; gap: 8px; padding: 10px 14px; flex: none; align-items: center;
+    display: flex; gap: 5px; padding: 9px 12px; flex: none; align-items: center;
     border-top: 1px solid var(--line); background: var(--glass); backdrop-filter: blur(12px);
   }
   footer input {
-    flex: 1; font: inherit; color: var(--text); background: rgba(255,255,255,0.05);
+    flex: 1; min-width: 0; font: inherit; color: var(--text); background: rgba(255,255,255,0.05);
     border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; outline: none;
   }
   footer input:focus { border-color: var(--accent); }
+  /* compact square icon buttons so they never crowd out the message box */
   footer .send {
-    font-size: 16px; padding: 7px 14px; cursor: pointer; color: var(--accent);
+    flex: none; width: 34px; height: 34px; padding: 0; font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; color: var(--accent);
     background: rgba(94,200,255,0.1); border: 1px solid var(--line); border-radius: 10px;
   }
   footer .send:hover { background: rgba(94,200,255,0.2); }
+  /* the send button is the primary action — tint it a touch stronger */
+  footer #send { background: rgba(94,200,255,0.2); }
   /* current thread indicator */
   #threadBar {
     display: flex; align-items: center; gap: 6px; flex: none;
