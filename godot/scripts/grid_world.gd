@@ -85,7 +85,7 @@ func _build() -> void:
 	# ground slab + outer perimeter wall around the whole grid
 	var halfx := GRID_COLS * CELL * 0.5
 	var halfz := GRID_ROWS * CELL * 0.5
-	_box(Vector3(0, -0.1, 0), Vector3(GRID_COLS * CELL + 0.4, 0.2, GRID_ROWS * CELL + 0.4), _m("232838", 0.5))
+	add_child(_box(Vector3(0, -0.1, 0), Vector3(GRID_COLS * CELL + 0.6, 0.2, GRID_ROWS * CELL + 0.6), _m("232838", 0.5)))
 	# perimeter is a U: back (north) + the two sides, with the FRONT (south, the
 	# camera-facing side) left open — same silhouette as the original office.
 	var lenx := GRID_COLS * CELL + WALL_T
@@ -94,19 +94,7 @@ func _build() -> void:
 	_perim(Vector3(-halfx, 0, 0), Vector3(WALL_T, 0, lenz))      # west wall
 	_perim(Vector3( halfx, 0, 0), Vector3(WALL_T, 0, lenz))      # east wall
 
-func _perim(pos: Vector3, size: Vector3) -> void:
-	var T := 0.34          # thick enough to read as a real wall from a distance
-	var base := _m("69748f", 0.6)
-	var glass := _m("b6d2f4", 0.05, "7fa0cf", 0.8); glass.albedo_color.a = 0.55
-	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var cap := _m("dbe4f2", 0.3)
-	var bh := 2.8          # SOLID wall (the bulk) — clearly visible
-	var gh := WALL_H - bh  # window band above
-	var sz := Vector3(max(size.x, T), 0, max(size.z, T))
-	_box(Vector3(pos.x, bh * 0.5, pos.z), Vector3(sz.x, bh, sz.z), base)
-	_box(Vector3(pos.x, bh + gh * 0.5, pos.z), Vector3(sz.x, gh, sz.z), glass)
-	_box(Vector3(pos.x, WALL_H + 0.03, pos.z), Vector3(sz.x + 0.08, 0.1, sz.z + 0.08), cap)  # top coping
-
+	# rooms — one container per slot at its fixed cell centre
 	for slot in range(GRID_COLS * GRID_ROWS):
 		var center := slot_center(slot)
 		_cell_center.append(center)
@@ -117,6 +105,19 @@ func _perim(pos: Vector3, size: Vector3) -> void:
 		var kind := String(room_order[slot])
 		_build_room(room, kind)
 		_register_anchors(slot, kind)
+
+func _perim(pos: Vector3, size: Vector3) -> void:
+	var T := 0.34          # thick enough to read as a real wall from a distance
+	var base := _m("69748f", 0.6)
+	var glass := _m("b6d2f4", 0.05, "7fa0cf", 0.8); glass.albedo_color.a = 0.55
+	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	var cap := _m("dbe4f2", 0.3)
+	var bh := 2.8          # SOLID wall (the bulk) — clearly visible
+	var gh := WALL_H - bh  # window band above
+	var sz := Vector3(max(size.x, T), 0, max(size.z, T))
+	add_child(_box(Vector3(pos.x, bh * 0.5, pos.z), Vector3(sz.x, bh, sz.z), base))
+	add_child(_box(Vector3(pos.x, bh + gh * 0.5, pos.z), Vector3(sz.x, gh, sz.z), glass))
+	add_child(_box(Vector3(pos.x, WALL_H + 0.03, pos.z), Vector3(sz.x + 0.08, 0.1, sz.z + 0.08), cap))
 
 ## Record this slot's agent anchors (world + local + slot) from ROOM_ANCHORS.
 func _register_anchors(slot: int, kind: String) -> void:
