@@ -93,14 +93,24 @@ function help() {
   row("projects", "Projects + who is working on them");
   row('open "<project>"', "Open a project window");
   row("editor", "Open the 3D Office Editor");
+  row("jobs", "Scheduled / recurring agent jobs");
+  row("proposals", "Team project pitches awaiting a verdict");
+  row("proposal <approve|reject> <id>", "Decide on a pitch");
   row("memory <agent>", "Read an agent's memory");
   row("office", "Read OFFICE.md (shared brief)");
 
   head(`AI features ${c.gray}(use the main API keys)${c.reset}`);
   row('say "<msg>" [preset]', "Speak it with a TTS voice (default: sunny)");
+  row("voices", "List the TTS voice presets");
   row('image "<prompt>"', "Generate an AI image → file path");
-  row("keys", "List configured keys (values hidden)");
+
+  head("Configure");
+  row("lang [en|th|zh|ja]", "Show / set the office language");
+  row("keys", "List configured API keys (values hidden)");
+  row("key set <NAME> <value>", "Add a key · key rm <NAME> · key test [NAME]");
   row("channels", "Telegram / Discord / LINE status");
+  row("plugins", "Installed plugins");
+  row("plugin install <git-url>", "Add a plugin · plugin remove <id>");
 
   head("Maintenance");
   row("fixmic", "Reset Windows voice-typing if it's stuck");
@@ -375,6 +385,123 @@ async function main() {
           console.log(`${ts} ${c.warn}💡 new proposal: ${e.name}${c.reset}`);
       }
     }, 800);
+    return;
+  }
+
+  if (cmd === "lang") {
+    const langs = { en: "🇬🇧 English", th: "🇹🇭 ไทย", zh: "🇨🇳 中文", ja: "🇯🇵 日本語" };
+    const code = (rest[0] || "").toLowerCase();
+    if (!code) {
+      const reg = await req("GET", "/registry");
+      const cur = reg.lang || "en";
+      console.log(`\n  Office language: ${c.bold}${langs[cur] || cur}${c.reset}`);
+      info("Change with: bagidea lang <en|th|zh|ja>");
+      return;
+    }
+    if (!langs[code]) return bad("Unknown language — choose: en, th, zh, ja");
+    await req("POST", "/registry/lang", { lang: code });
+    return ok(`Office language set to ${c.bold}${langs[code]}${c.reset}`);
+  }
+
+  if (cmd === "voices") {
+    const v = await req("GET", "/tts/presets");
+    console.log("");
+    for (const [id, label] of Object.entries(v))
+      console.log(`  ${c.accent}${id.padEnd(10)}${c.reset}${c.gray}${label}${c.reset}`);
+    info('\n  Use: bagidea say "<message>" <preset>');
+    return;
+  }
+
+  if (cmd === "plugins") {
+    const r = await req("GET", "/plugins");
+    console.log("");
+    if (!(r.plugins || []).length) return info("(no plugins installed)");
+    for (const p of r.plugins) {
+      console.log(`  ${c.bold}${p.name}${c.reset} ${c.gray}${p.id} · v${p.version || "?"}${c.reset}`);
+      if (p.description) console.log(`  ${c.gray}${p.description}${c.reset}`);
+      const cmds = (p.commands || []).map((x) => x.name || x).filter(Boolean);
+      if (cmds.length) console.log(`  ${c.gray}commands: ${cmds.join(", ")}${c.reset}`);
+      console.log("");
+    }
+    return;
+  }
+
+  if (cmd === "plugin") {
+    const sub = rest[0];
+    const arg = rest.slice(1).join(" ").trim();
+    if (sub === "install") {
+      if (!arg) return info("Usage: bagidea plugin install <git-url>");
+      info("📦 cloning + installing…");
+      const r = await req("POST", "/plugins/install", { url: arg });
+      if (r && r.ok) return ok(`Installed plugin ${c.bold}${r.name}${c.reset}`);
+      return bad(typeof r === "string" ? r : "install failed");
+    }
+    if (sub === "remove" || sub === "rm") {
+      if (!arg) return info("Usage: bagidea plugin remove <id>");
+      const r = await req("POST", "/plugins/remove", { id: arg });
+      if (typeof r === "string" && r && !/^ok$/i.test(r)) return bad(r);
+      return ok(`Removed plugin ${c.bold}${arg}${c.reset}`);
+    }
+    return info("Usage: bagidea plugin <install <git-url> | remove <id>>");
+  }
+
+  if (cmd === "proposals") {
+    const r = await req("GET", "/proposals");
+    const ps = (r.proposals || []).filter((p) => !p.status || p.status === "pending");
+    console.log("");
+    if (!ps.length) return info("(no pending proposals)");
+    for (const p of ps) {
+      console.log(`  ${c.warn}💡${c.reset} ${c.bold}${p.name}${c.reset} ${c.gray}#${p.id} · ${(p.agents || []).join(", ")}${c.reset}`);
+      if (p.detail) console.log(`     ${c.gray}${String(p.detail).slice(0, 100)}${c.reset}`);
+    }
+    info("\n  Decide: bagidea proposal <approve|reject> <id>");
+    return;
+  }
+
+  if (cmd === "proposal") {
+    const sub = rest[0];
+    const id = rest[1];
+    if (!["approve", "reject"].includes(sub) || !id)
+      return info("Usage: bagidea proposal <approve|reject> <id>");
+    await req("POST", "/proposals/respond", { id, decision: sub });
+    return ok(sub === "approve"
+      ? `Approved #${id} — a project is being created and staffed 🎉`
+      : `Rejected #${id}`);
+  }
+
+  if (cmd === "key") {
+    const sub = rest[0];
+    if (sub === "set") {
+      const name = rest[1];
+      const value = rest.slice(2).join(" ");
+      if (!name || !value) return info("Usage: bagidea key set <NAME> <value>");
+      await req("POST", "/registry/key", { name, value });
+      return ok(`Key ${c.bold}${name.toUpperCase()}${c.reset} saved`);
+    }
+    if (sub === "rm" || sub === "remove") {
+      const name = rest[1];
+      if (!name) return info("Usage: bagidea key rm <NAME>");
+      await req("POST", "/registry/key", { name, remove: true });
+      return ok(`Key ${c.bold}${name.toUpperCase()}${c.reset} removed`);
+    }
+    if (sub === "test") {
+      const name = (rest[1] || "OPENAI_API_KEY").toUpperCase();
+      info(`🧪 testing ${name}…`);
+      const r = await req("POST", "/registry/key/test", { name });
+      return r && r.ok ? ok(`${name}: ${r.msg || "works"}`) : bad(`${name}: ${(r && r.msg) || "failed"}`);
+    }
+    return info("Usage: bagidea key <set <NAME> <value> | rm <NAME> | test [NAME]>");
+  }
+
+  if (cmd === "jobs") {
+    const r = await req("GET", "/jobs");
+    console.log("");
+    if (!(r.jobs || []).length) return info("(no scheduled jobs)");
+    for (const j of r.jobs) {
+      const sched = j.mode === "every" ? `every ${j.everyMin}m`
+        : j.mode === "at" ? `${j.daily ? "daily " : ""}${j.time}` : "once";
+      console.log(`  ${c.accent}${sched.padEnd(12)}${c.reset}${c.gray}${j.agent}${c.reset}  ${String(j.prompt || "").split("\n")[0].slice(0, 60)}`);
+    }
     return;
   }
 
