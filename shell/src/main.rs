@@ -52,6 +52,8 @@ enum UserEvent {
     SetHotkey(String),
     PttKey(bool), // global voice hotkey: true = pressed, false = released
     WorldReady,
+    EditorOpening, // show the logo splash + launch the 3D editor tiny behind it
+    EditorReady,   // the editor window is on screen → drop the splash
 }
 
 /// "ctrl+space" / "f6" → (modifier flags, virtual key) for RegisterHotKey.
@@ -274,6 +276,58 @@ fn spawn_office(root: &PathBuf, cx: i32, cy: i32) -> Option<Child> {
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .ok()
+}
+
+// Launch the 3D Office Editor the SAME way as the wallpaper: a 64px window dead
+// centre, hidden under the shell's circular splash. office_floor.gd grows it to
+// a framed 1280x800 editor window after the first frame.
+fn spawn_editor(root: &PathBuf, cx: i32, cy: i32) -> Option<Child> {
+    let godot = std::env::var("BAGIDEA_GODOT")
+        .unwrap_or_else(|_| r"E:\Tools\Godot\Godot_v4.6.3-stable_win64.exe".into());
+    if !std::path::Path::new(&godot).exists() {
+        return None;
+    }
+    Command::new(godot)
+        .args(["--path"])
+        .arg(root.join("godot"))
+        .args(["--resolution", "64x64"])
+        .arg("--position")
+        .arg(format!("{},{}", cx - 32, cy - 32))
+        .args(["--", "--editor3d"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .ok()
+}
+
+// Watch for the daemon's "open the editor" request, then for the editor's
+// "ready" handoff — drives the splash show/hide via the event loop.
+fn watch_editor_requests(proxy: tao::event_loop::EventLoopProxy<UserEvent>) {
+    std::thread::spawn(move || {
+        let req = std::env::temp_dir().join("bagidea_editor_open_request");
+        let ready = std::env::temp_dir().join("bagidea_editor_ready");
+        // drop any stale request from a previous run so we don't auto-open
+        let _ = std::fs::remove_file(&req);
+        loop {
+            if req.exists() {
+                let _ = std::fs::remove_file(&req); // consume it → exactly one open
+                let _ = std::fs::remove_file(&ready);
+                let _ = proxy.send_event(UserEvent::EditorOpening);
+                let start = std::time::SystemTime::now();
+                loop {
+                    let fresh = std::fs::metadata(&ready)
+                        .and_then(|x| x.modified())
+                        .map(|t| t >= start)
+                        .unwrap_or(false);
+                    if fresh || start.elapsed().unwrap_or_default() > std::time::Duration::from_secs(60) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                }
+                let _ = proxy.send_event(UserEvent::EditorReady);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(400));
+        }
+    });
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -524,6 +578,11 @@ fn main() {
     if let Some(child) = office_child.as_ref() {
         attach_wallpaper_when_ready(child.id(), proxy.clone());
     }
+
+    // editor: the daemon drops a request flag → we show the splash + launch the
+    // editor tiny under it, then drop the splash when it reports ready.
+    let _ = std::fs::write(std::env::temp_dir().join("bagidea_shell_alive"), "1");
+    watch_editor_requests(proxy.clone());
 
     // ---- system tray: the only true exit (the suite runs forever otherwise)
     let tray_menu = Menu::new();
@@ -786,6 +845,22 @@ fn main() {
                     splash.set_visible(false);
                     orb.set_outer_position(LogicalPosition::new(orb_x, orb_y));
                     raise_orb(&orb);
+                }
+                UserEvent::EditorOpening => {
+                    // re-show the circular logo splash, on top, and launch the
+                    // editor tiny+cloaked underneath it (same as the wallpaper).
+                    splash.set_visible(true);
+                    unsafe {
+                        use windows_sys::Win32::UI::WindowsAndMessaging::{
+                            SetWindowPos, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+                        };
+                        SetWindowPos(splash.hwnd() as HWND, HWND_TOPMOST as HWND, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                    }
+                    let _ = spawn_editor(&root, phys_w / 2, phys_h / 2 - 30);
+                }
+                UserEvent::EditorReady => {
+                    splash.set_visible(false);
                 }
                 UserEvent::Toggle => do_toggle(feed),
                 UserEvent::HideOverlay => {

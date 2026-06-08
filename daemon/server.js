@@ -2381,15 +2381,21 @@ const server = http.createServer((req, res) => {
     res.writeHead(200); res.end("ok");
 
   } else if (req.method === "POST" && req.url === "/editor/open") {
-    // 🎨 launch the standalone 3D Office Editor (its own Godot window).
+    // 🎨 Ask the shell to open the editor — it shows its circular logo splash,
+    // launches Godot tiny+cloaked behind it, and reveals when ready (the SAME
+    // boot path as the wallpaper). Falls back to a direct launch if no shell.
     try {
-      const godot = process.env.BAGIDEA_GODOT ||
-        "E:\\Tools\\Godot\\Godot_v4.6.3-stable_win64.exe";
+      const tmp = require("os").tmpdir();
+      try { fs.unlinkSync(path.join(tmp, "bagidea_editor_ready")); } catch {}
+      fs.writeFileSync(path.join(tmp, "bagidea_editor_open_request"), String(Date.now()));
+      // fallback: if the shell isn't running, launch directly after a beat
       const gdir = path.join(__dirname, "..", "godot");
-      if (!fs.existsSync(godot)) { res.writeHead(500); return res.end("ไม่พบ Godot — ตั้ง env BAGIDEA_GODOT"); }
-      spawn(godot, ["--path", gdir, "--", "--editor3d"],
-        { detached: true, stdio: "ignore", windowsHide: false }).unref();
-      // tell the overlay to tuck the chat away so the editor owns the screen
+      const godot = process.env.BAGIDEA_GODOT || "E:\\Tools\\Godot\\Godot_v4.6.3-stable_win64.exe";
+      const shellUp = fs.existsSync(path.join(tmp, "bagidea_shell_alive"));
+      if (!shellUp && fs.existsSync(godot)) {
+        spawn(godot, ["--path", gdir, "--", "--editor3d"],
+          { detached: true, stdio: "ignore", windowsHide: false }).unref();
+      }
       broadcast({ type: "editor.opening" }, false);
       res.writeHead(200); res.end("ok");
     } catch (e) { res.writeHead(500); res.end(String(e.message)); }

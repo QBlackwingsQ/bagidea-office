@@ -136,6 +136,12 @@ func _enter_editor_mode() -> void:
 	get_tree().create_timer(0.6).timeout.connect(func():
 		DisplayServer.window_move_to_foreground(); get_window().grab_focus())
 	Engine.max_fps = 60
+	# tell the shell the editor is on screen → it drops the circular logo splash
+	# (same handoff as the wallpaper's bagidea_world_ready flag)
+	var flag := FileAccess.open(
+		OS.get_environment("TEMP").path_join("bagidea_editor_ready"), FileAccess.WRITE)
+	if flag:
+		flag.store_line(Time.get_datetime_string_from_system())
 
 ## Manual atmosphere from the overlay: {"hour": 17.5} pins the clock for
 ## debugging/beauty shots; {"hour": "auto"} hands it back to real time.
