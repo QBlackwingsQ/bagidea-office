@@ -2324,6 +2324,48 @@ const server = http.createServer((req, res) => {
     broadcast({ type: "plugins.changed" }, false);
     res.writeHead(200); res.end("ok");
 
+  } else if (req.method === "POST" && req.url === "/plugins/install") {
+    // 📦 one-click install: git clone a plugin repo into plugins/ then reload.
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        let url = String(JSON.parse(body).url || "").trim();
+        if (!/^https:\/\/(github\.com|gitlab\.com|[\w.-]+)\/[\w.\-/]+$/.test(url))
+          throw new Error("ใส่ลิงก์ git repo ที่ขึ้นต้น https:// ของ plugin");
+        if (!url.endsWith(".git")) url += ".git";
+        const name = url.split("/").pop().replace(/\.git$/, "").replace(/[^\w-]/g, "");
+        const dest = path.join(__dirname, "..", "plugins", name);
+        if (fs.existsSync(dest)) throw new Error("มี plugin ชื่อนี้แล้ว: " + name);
+        const { execFile } = require("child_process");
+        execFile("git", ["clone", "--depth", "1", url, dest], { timeout: 60000 }, (e) => {
+          if (e || !fs.existsSync(path.join(dest, "plugin.json"))) {
+            try { fs.rmSync(dest, { recursive: true, force: true }); } catch {}
+            res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+            return res.end(e ? "clone ไม่สำเร็จ: " + e.message : "repo นี้ไม่มี plugin.json — ไม่ใช่ plugin ที่ถูกต้อง");
+          }
+          plugins.load();
+          broadcast({ type: "plugins.changed" }, false);
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+          res.end(JSON.stringify({ ok: true, name }));
+        });
+      } catch (e) { res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/plugins/remove") {
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        const id = String(JSON.parse(body).id || "").replace(/[^\w-]/g, "");
+        const dir = path.join(__dirname, "..", "plugins", id);
+        if (id === "music") throw new Error("plugin หลักลบไม่ได้");
+        if (!fs.existsSync(path.join(dir, "plugin.json"))) throw new Error("ไม่พบ plugin");
+        fs.rmSync(dir, { recursive: true, force: true });
+        plugins.load();
+        broadcast({ type: "plugins.changed" }, false);
+        res.writeHead(200); res.end("ok");
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
   } else if (req.url.startsWith("/plugin/") &&
       plugins.handleHttp(req, res, readBody, readBodyRaw)) {
     /* handled by a plugin */

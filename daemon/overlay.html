@@ -961,6 +961,10 @@
     location.reload();
   }
   // Translate the chrome on load + everything rendered later (modals, menus).
+  // A MutationObserver gives instant response; a slow janitor sweep
+  // GUARANTEES coverage regardless of how content was rendered or whether a
+  // batch failed — already-translated text turns non-Thai and never re-queues,
+  // so the sweep settles to near-zero work once the cache is warm.
   if (LANG !== "th") {
     const _obs = new MutationObserver((muts) => {
       for (const m of muts) for (const nd of m.addedNodes)
@@ -969,6 +973,7 @@
     addEventListener("DOMContentLoaded", () => {
       applyI18n(document.body);
       _obs.observe(document.body, { childList: true, subtree: true });
+      setInterval(() => { if (!document.hidden) applyI18n(document.body); }, 1500);
     });
   }
 
@@ -2543,28 +2548,48 @@
   async function openPlugins() {
     modal.classList.add("open");
     const r = await fetch("/plugins").then((x) => x.json()).catch(() => ({ plugins: [] }));
-    modalCard.innerHTML = hdr("🧩 " + t("PLUGINS")) +
-      `<div style="font-size:11px;color:var(--dim);margin-bottom:10px">${t("ส่วนขยายของออฟฟิศ — คลิกเพื่อเปิดแผง · agents สั่งงาน plugin เหล่านี้ได้")}</div>
+    modalCard.innerHTML = hdr("🧩 PLUGINS") +
+      `<div style="font-size:11px;color:var(--dim);margin-bottom:10px">ส่วนขยายของออฟฟิศ — คลิกเพื่อเปิดแผง · agents สั่งงาน plugin เหล่านี้ได้</div>
        <div id="plgList"></div>
-       <div style="font-size:10.5px;color:var(--dim);margin-top:10px">
-         ➕ ${t("เพิ่ม plugin: วางโฟลเดอร์ใน")} <code>plugins/</code> ${t("แล้วกด")} 🔄 — ${t("ดูวิธีเขียนใน docs/guide/plugins.md")}</div>
-       <button class="bigbtn" id="plgReload" style="margin-top:8px">🔄 ${t("โหลด plugins ใหม่")}</button>`;
+       <div class="field" style="margin-top:12px"><label>📦 ติดตั้ง plugin จากลิงก์ GitHub (ง่ายสุด)</label>
+         <div class="assistrow">
+           <input id="plgUrl" placeholder="เช่น https://github.com/you/my-plugin" autocomplete="off" style="flex:1">
+           <button class="sparkle" id="plgInstall">⬇ ติดตั้ง</button>
+         </div>
+         <div style="font-size:10px;color:var(--dim);margin-top:5px">
+           หรือวางโฟลเดอร์เองใน <code>plugins/</code> แล้วกด 🔄 · เขียน plugin เอง: docs/guide/plugins.md</div>
+       </div>
+       <button class="bigbtn" id="plgReload">🔄 โหลด plugins ใหม่</button>`;
     const box = modalCard.querySelector("#plgList");
     if (!(r.plugins || []).length)
-      box.innerHTML = `<div style="font-size:11.5px;color:var(--dim)">${t("ยังไม่มี plugin")}</div>`;
+      box.innerHTML = `<div style="font-size:11.5px;color:var(--dim)">ยังไม่มี plugin</div>`;
     for (const p of r.plugins || []) {
       const row = document.createElement("div");
       row.className = "arow";
       row.innerHTML = `<div class="meta"><b>${p.name}</b>
           <span>${(p.description || "").replace(/</g, "&lt;")} · v${p.version || "?"}` +
-        (p.commands.length ? ` · ${p.commands.length} ${t("คำสั่ง")}` : "") + `</span></div>` +
-        (p.panel ? `<div class="winbtn" title="${t("เปิดแผง")}">▶</div>` : "");
-      if (p.panel) row.querySelector(".winbtn").onclick = () => openPluginPanel(p);
-      else row.style.cursor = "default";
+        (p.commands.length ? ` · ${p.commands.length} คำสั่ง` : "") + `</span></div>` +
+        (p.panel ? `<div class="winbtn" title="เปิดแผง">▶</div>` : "") +
+        (p.id !== "music" ? `<div class="winbtn hide" title="ถอนการติดตั้ง">🗑</div>` : "");
+      const btns = row.querySelectorAll(".winbtn");
+      if (p.panel) btns[0].onclick = () => openPluginPanel(p);
+      else if (!btns.length) row.style.cursor = "default";
+      const del = row.querySelector('[title="ถอนการติดตั้ง"]');
+      if (del) del.onclick = () => api("/plugins/remove", { id: p.id }).then(() => openPlugins());
       box.appendChild(row);
     }
     modalCard.querySelector("#plgReload").onclick = () =>
       api("/plugins/reload", {}).then(() => openPlugins());
+    modalCard.querySelector("#plgInstall").onclick = async () => {
+      const url = modalCard.querySelector("#plgUrl").value.trim();
+      if (!url) return;
+      addChip("📦 กำลังติดตั้ง plugin…");
+      const r2 = await fetch("/plugins/install", { method: "POST",
+        headers: { "content-type": "application/json", "x-bagidea-ui": "1" },
+        body: JSON.stringify({ url }) });
+      if (r2.ok) { addChip("✅ ติดตั้ง plugin แล้ว"); openPlugins(); }
+      else addChip("✗ " + (await r2.text()).slice(0, 100));
+    };
   }
   function openPluginPanel(p) {
     modal.classList.add("open");
