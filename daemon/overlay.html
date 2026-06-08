@@ -1055,10 +1055,12 @@
   const DOTS = { idle: "#4ade80", working: "#5ec8ff", blocked: "#ffb054", offline: "#6b7280", meeting: "#c084fc" };
   function renderRail() {
     railEl.innerHTML = "";
-    // The CEO (you) always leads, then the Director, then the team.
-    const ids = Object.keys(agents).sort((a, b) => {
+    // The CEO (you) always leads, then the Director, then the team in the order
+    // they were added (registry order — matches the rest of the UI).
+    const order = Object.keys(agents);
+    const ids = order.slice().sort((a, b) => {
       const w = (x) => (x === "ceo" ? 0 : x === "main" ? 1 : 2);
-      return w(a) - w(b) || a.localeCompare(b);
+      return w(a) - w(b) || order.indexOf(a) - order.indexOf(b);
     });
     for (const id of ids) {
       const seat = document.createElement("div");
@@ -2044,7 +2046,14 @@
     modalCard.querySelectorAll(".tab").forEach((t) => (t.onclick = () => openSettings(t.dataset.t)));
     if (tab === "agents") {
       const list = modalCard.querySelector("#alist");
-      for (const [id, a] of Object.entries(ROSTER)) {
+      // CEO first, Director (main) second, then the rest in registry order.
+      const rosterOrder = Object.keys(ROSTER);
+      const rosterIds = rosterOrder.slice().sort((a, b) => {
+        const w = (x) => (x === "ceo" ? 0 : x === "main" ? 1 : 2);
+        return w(a) - w(b) || rosterOrder.indexOf(a) - rosterOrder.indexOf(b);
+      });
+      for (const id of rosterIds) {
+        const a = ROSTER[id];
         const row = document.createElement("div");
         row.className = "arow";
         const f = document.createElement("div");

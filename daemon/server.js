@@ -2002,6 +2002,17 @@ const server = http.createServer((req, res) => {
       try {
         const p = JSON.parse(body);
         const id = p.id || slugId(p.name);
+        // Hire cap: the office floor is small and sub-agents (👻 ghosts) already
+        // handle parallel load — keep the staff to MAX_STAFF (CEO not counted).
+        const MAX_STAFF = 18;
+        if (!reg.agents[id]) {
+          const staff = Object.keys(reg.agents).filter((k) => k !== "ceo").length;
+          if (staff >= MAX_STAFF) {
+            res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
+            return res.end(`ออฟฟิศเต็มแล้ว — รับพนักงานได้สูงสุด ${MAX_STAFF} คน (ไม่นับ CEO). ` +
+              `งานขนานให้ใช้การแตกร่างผี (sub-agents) แทน`);
+          }
+        }
         const cur = reg.agents[id] || { skills: [], tools: [] };
         const px = p.persona || cur.persona || {};
         reg.agents[id] = {
