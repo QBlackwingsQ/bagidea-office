@@ -477,54 +477,6 @@ fn attach_wallpaper_when_ready(pid: u32, proxy: tao::event_loop::EventLoopProxy<
     });
 }
 
-/// Keep the editor window OFF the taskbar (no stray Godot icon) and invisible
-/// while it boots; once it reports ready (icon已 swapped to the brand logo +
-/// grown to its real size) reveal it as a normal taskbar window.
-fn attach_editor_when_ready(pid: u32) {
-    std::thread::spawn(move || unsafe {
-        use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
-        let mut find = FindByPid { pid, hwnd: 0 as HWND };
-        for _ in 0..240 {
-            EnumWindows(Some(find_by_pid_cb), &mut find as *mut FindByPid as _);
-            if find.hwnd != 0 as HWND {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        let ed = find.hwnd;
-        if ed == 0 as HWND {
-            return;
-        }
-        // cloak + tool window: no Godot box, no Godot taskbar button during boot
-        SetWindowRgn(ed as _, CreateRectRgn(0, 0, 0, 0), 1);
-        ShowWindow(ed, SW_HIDE);
-        let ex = GetWindowLongW(ed, GWL_EXSTYLE) as u32;
-        SetWindowLongW(ed, GWL_EXSTYLE, (ex | WS_EX_TOOLWINDOW) as i32);
-        ShowWindow(ed, SW_SHOW);
-        // wait for office_floor's editor-ready handoff (brand icon set + grown)
-        let started = std::time::SystemTime::now() - std::time::Duration::from_secs(2);
-        let flag = std::env::temp_dir().join("bagidea_editor_ready");
-        for _ in 0..200 {
-            let fresh = std::fs::metadata(&flag)
-                .and_then(|m| m.modified())
-                .map(|t| t >= started)
-                .unwrap_or(false);
-            if fresh {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(250));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(350)); // settle grow + icon
-        // reveal as a real taskbar window (now carrying the brand icon)
-        ShowWindow(ed, SW_HIDE);
-        let ex2 = GetWindowLongW(ed, GWL_EXSTYLE) as u32;
-        SetWindowLongW(ed, GWL_EXSTYLE, (ex2 & !WS_EX_TOOLWINDOW) as i32);
-        SetWindowRgn(ed as _, 0 as _, 1);
-        ShowWindow(ed, SW_SHOW);
-        SetForegroundWindow(ed);
-    });
-}
-
 // ---- auto-start with Windows (HKCU Run key, toggled from the tray menu —
 // dev-friendly: nothing is forced, the checkbox controls it)
 
@@ -805,6 +757,7 @@ fn main() {
 
     let mut mini = false;
     let mut feed = false;
+    let mut editor_pid: u32 = 0; // single-instance: focus instead of re-opening
     let mut last_ptt = std::time::Instant::now()
         .checked_sub(std::time::Duration::from_secs(10))
         .unwrap_or_else(std::time::Instant::now);
@@ -905,18 +858,37 @@ fn main() {
                     raise_orb(&orb);
                 }
                 UserEvent::EditorOpening => {
-                    // re-show the circular logo splash, on top, and launch the
-                    // editor tiny+cloaked underneath it (same as the wallpaper).
-                    splash.set_visible(true);
-                    unsafe {
-                        use windows_sys::Win32::UI::WindowsAndMessaging::{
-                            SetWindowPos, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
-                        };
-                        SetWindowPos(splash.hwnd() as HWND, HWND_TOPMOST as HWND, 0, 0, 0, 0,
-                            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                    // single instance: if an editor is already open, just focus
+                    // it (don't open a second one or re-show the splash).
+                    let mut existing = 0 as HWND;
+                    if editor_pid != 0 {
+                        let mut find = FindByPid { pid: editor_pid, hwnd: 0 as HWND };
+                        unsafe { EnumWindows(Some(find_by_pid_cb), &mut find as *mut FindByPid as _); }
+                        existing = find.hwnd;
                     }
-                    if let Some(child) = spawn_editor(&root, phys_w / 2, phys_h / 2 - 30) {
-                        attach_editor_when_ready(child.id()); // no Godot taskbar flash
+                    if existing != 0 as HWND {
+                        unsafe {
+                            use windows_sys::Win32::UI::WindowsAndMessaging::{SetForegroundWindow, ShowWindow, SW_RESTORE};
+                            ShowWindow(existing, SW_RESTORE);
+                            SetForegroundWindow(existing);
+                        }
+                        // unblock the watcher (it's waiting for a ready flag)
+                        let _ = std::fs::write(std::env::temp_dir().join("bagidea_editor_ready"), "focused");
+                    } else {
+                        editor_pid = 0;
+                        // show the logo splash on top, launch the editor under it.
+                        // The .exe already carries the brand icon, so no cloak needed.
+                        splash.set_visible(true);
+                        unsafe {
+                            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                                SetWindowPos, HWND_TOPMOST, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+                            };
+                            SetWindowPos(splash.hwnd() as HWND, HWND_TOPMOST as HWND, 0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                        }
+                        if let Some(child) = spawn_editor(&root, phys_w / 2, phys_h / 2 - 30) {
+                            editor_pid = child.id();
+                        }
                     }
                 }
                 UserEvent::EditorReady => {
