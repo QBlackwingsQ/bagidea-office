@@ -1656,6 +1656,7 @@ function readBodyRaw(req, cb) {
 const MAPBG = path.join(__dirname, "map_bg.png");
 const LAYOUT_FILE = path.join(__dirname, "layout.json");   // Office Editor
 const PRESETS_FILE = path.join(__dirname, "presets.json"); // saved layouts
+const ASSETS_FILE = path.join(__dirname, "assets.json");   // imported models/images
 
 // Media file server for chat rendering (images / video / audio only).
 const MEDIA_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
@@ -2303,6 +2304,31 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
     try { res.end(fs.readFileSync(LAYOUT_FILE, "utf8")); }
     catch { res.end(JSON.stringify({ items: [] })); }
+
+  } else if (req.method === "GET" && req.url === "/assets") {
+    // 🗂 imported model/image library — reusable across editor sessions.
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    try { res.end(fs.readFileSync(ASSETS_FILE, "utf8")); }
+    catch { res.end(JSON.stringify({ assets: [] })); }
+
+  } else if (req.method === "POST" && req.url === "/assets") {
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        let assets = [];
+        try { assets = JSON.parse(fs.readFileSync(ASSETS_FILE, "utf8")).assets || []; } catch {}
+        if (p.remove) assets = assets.filter((a) => a.path !== p.remove);
+        else {
+          const path_ = String(p.path || "").trim();
+          const kind = p.kind === "image" ? "image" : "model";
+          if (!path_) throw new Error("no path");
+          if (!assets.some((a) => a.path === path_))
+            assets.push({ path: path_, kind, name: path_.split(/[\\/]/).pop(), ts: Date.now() });
+        }
+        fs.writeFileSync(ASSETS_FILE, JSON.stringify({ assets }, null, 1));
+        res.writeHead(200); res.end("ok");
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
 
   } else if (req.method === "GET" && req.url === "/presets") {
     // custom layout presets the user saved from the 3D editor (defaults live

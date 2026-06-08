@@ -52,3 +52,4 @@ daemon/layout.json
 daemon/i18n/
 dist/
 daemon/presets.json
+daemon/assets.json

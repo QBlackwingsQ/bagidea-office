@@ -1,101 +1,97 @@
 extends Node3D
 ## 🎨 3D Office Editor — a real in-world editor launched in its OWN window
-## (office_floor with --editor3d). The procedural rooms/walls and the Ghost
-## Deck are LOCKED context; you freely place / move / rotate / scale furniture
-## and decor in true 3D, import .glb models (with animation playback), and
-## save to the daemon's layout.json — the live wallpaper then renders the
-## exact same arrangement. Furniture is decor (agents path on the existing
-## graph); a saved layout never breaks navigation.
+## (office_floor with --editor3d). The procedural rooms/walls + Ghost Deck are
+## LOCKED context; you place / move / rotate / scale DECOR and import .glb
+## models (with animation) or images, then save. Saving writes the shared
+## layout.json so the live wallpaper renders the same arrangement; "Save as
+## preset" keeps it as a reusable custom preset.
 ##
-## Controls: LMB place/select · LMB-drag move · RMB/MMB-drag orbit ·
-##           Shift+drag pan · wheel zoom · scene panel for rotate/scale/delete.
+## Picking is real 3D (a box collider per item + camera raycast) — click the
+## object itself to select, drag the floor handle to move. Panels: SCENE
+## (everything placed) and LIBRARY (imported models/images, reusable).
 
 const LAYOUT_URL := "http://127.0.0.1:8787/layout"
+const PRESETS_URL := "http://127.0.0.1:8787/presets"
 const ASSETS_URL := "http://127.0.0.1:8787/assets"
 
-var rig: Node3D                   # CameraRig — driven exactly like the real view
+var rig: Node3D
 var cam: Camera3D
-var _root: Node3D                 # holds placed item rigs
-var items: Array = []             # parallel to _root children: {dict, node}
+var _root: Node3D
+var items: Array = []             # [{dict, node, body}]
 var sel: int = -1
-var armed_type := ""              # palette item to place on next empty click
-var armed_asset := ""             # for poster/model placement
+var armed_type := ""
+var armed_asset := ""
 var play_anim := true
-var imported_models: Array = []   # paths of .glb/.fbx imported this session
+var _hi: MeshInstance3D            # selection highlight ring
 
-# Camera = the REAL wallpaper framing, frozen (no drift), DOF off, and the
-# only freedom is a gentle left/right yaw so height + focus + beauty stay put.
+# camera: real framing, symmetric yaw, gentle zoom
 const BASE_TARGET := Vector3(2.5, 0.2, 0.8)
 const BASE_YAW := -12.0
 const BASE_PITCH := -45.0
-const BASE_DIST := 58.0
-const YAW_LIMIT := 9.0            # ± degrees of allowed sway
 var yaw := BASE_YAW
-var _dragging_cam := false
-var _dragging_item := false
+const YAW_LIMIT := 32.0
+var dist := 58.0
+const DIST_MIN := 30.0
+const DIST_MAX := 64.0
+var _drag_cam := false
+var _drag_item := false
 
 var _req: HTTPRequest
 var _save_req: HTTPRequest
 var _preset_req: HTTPRequest
+var _assets_req: HTTPRequest
 var ui: Control
+var custom_presets: Array = []
+var library: Array = []           # [{path, kind, name}]
 
 const TYPES := [
 	["desk", "🪑 Desk"], ["table", "🍽 Table"], ["chair", "💺 Chair"],
-	["shelf", "📚 Shelf"], ["plant", "🪴 Plant"], ["lamp", "💡 Lamp"], ["rug", "🟫 Rug"],
+	["shelf", "📚 Shelf"], ["plant", "🪴 Plant"], ["lamp", "💡 Lamp"],
+	["rug", "🟫 Rug"], ["sofa", "🛋 Sofa"], ["tv", "📺 TV"],
+	["whiteboard", "📋 Board"], ["cabinet", "🗄 Cabinet"], ["cooler", "🚰 Cooler"],
 ]
 
-# 5 starter furniture-arrangement presets across the floor (x -11..17,
-# z -11..14). Loading one replaces the current items; tweak then "Save as
-# preset" to keep a custom one. These are intentionally simple seeds.
 const PRESETS := [
 	{ "name": "Classic grid", "items": [
-		{ "type": "desk", "x": -7, "z": -7, "rot": 0 }, { "type": "chair", "x": -7, "z": -6, "rot": 180 },
-		{ "type": "desk", "x": -4, "z": -7, "rot": 0 }, { "type": "chair", "x": -4, "z": -6, "rot": 180 },
-		{ "type": "desk", "x": -7, "z": -3, "rot": 0 }, { "type": "chair", "x": -7, "z": -2, "rot": 180 },
-		{ "type": "desk", "x": -4, "z": -3, "rot": 0 }, { "type": "chair", "x": -4, "z": -2, "rot": 180 },
-		{ "type": "plant", "x": -9.5, "z": -8.5 }, { "type": "plant", "x": -1.5, "z": -1 },
-		{ "type": "lamp", "x": -2, "z": -8, "color": "ffe6b0" } ] },
+		{ "type": "desk", "x": -7, "z": -7 }, { "type": "chair", "x": -7, "z": -6, "rot": 180 },
+		{ "type": "desk", "x": -4, "z": -7 }, { "type": "chair", "x": -4, "z": -6, "rot": 180 },
+		{ "type": "desk", "x": -7, "z": -3 }, { "type": "chair", "x": -7, "z": -2, "rot": 180 },
+		{ "type": "desk", "x": -4, "z": -3 }, { "type": "chair", "x": -4, "z": -2, "rot": 180 },
+		{ "type": "plant", "x": -9.5, "z": -8.5 }, { "type": "cooler", "x": -1.5, "z": -8 } ] },
 	{ "name": "Open plan", "items": [
 		{ "type": "table", "x": -5, "z": -5, "scale": 1.4 }, { "type": "chair", "x": -6, "z": -5, "rot": 90 },
-		{ "type": "chair", "x": -4, "z": -5, "rot": 270 }, { "type": "chair", "x": -5, "z": -6, "rot": 180 },
-		{ "type": "chair", "x": -5, "z": -4, "rot": 0 },
-		{ "type": "rug", "x": -5, "z": -5, "scale": 1.6, "color": "33405a" },
-		{ "type": "plant", "x": -8, "z": -2 }, { "type": "shelf", "x": -9, "z": -7, "rot": 90 } ] },
+		{ "type": "chair", "x": -4, "z": -5, "rot": 270 }, { "type": "rug", "x": -5, "z": -5, "scale": 1.6, "color": "33405a" },
+		{ "type": "whiteboard", "x": -8.5, "z": -7 }, { "type": "plant", "x": -8, "z": -2 } ] },
 	{ "name": "Cozy lounge", "items": [
-		{ "type": "rug", "x": 2, "z": 4, "scale": 1.8, "color": "7a3b4b" },
-		{ "type": "table", "x": 2, "z": 4, "scale": 0.8 },
-		{ "type": "chair", "x": 0.8, "z": 4, "rot": 90 }, { "type": "chair", "x": 3.2, "z": 4, "rot": 270 },
-		{ "type": "plant", "x": -0.5, "z": 2.5 }, { "type": "plant", "x": 4.5, "z": 5.5 },
-		{ "type": "lamp", "x": 0, "z": 6, "color": "ffcf9a" }, { "type": "lamp", "x": 4.5, "z": 2.5, "color": "ffcf9a" },
-		{ "type": "shelf", "x": 5.5, "z": 4, "rot": 270 } ] },
+		{ "type": "rug", "x": 2, "z": 4, "scale": 1.8, "color": "7a3b4b" }, { "type": "sofa", "x": 2, "z": 5 },
+		{ "type": "table", "x": 2, "z": 4, "scale": 0.8 }, { "type": "tv", "x": 2, "z": 2, "rot": 180 },
+		{ "type": "plant", "x": -0.5, "z": 2.5 }, { "type": "lamp", "x": 4.5, "z": 5, "color": "ffcf9a" } ] },
 	{ "name": "Focus pods", "items": [
 		{ "type": "desk", "x": 8, "z": -7 }, { "type": "chair", "x": 8, "z": -6, "rot": 180 }, { "type": "shelf", "x": 9.4, "z": -7, "rot": 90 },
-		{ "type": "desk", "x": 8, "z": -3 }, { "type": "chair", "x": 8, "z": -2, "rot": 180 }, { "type": "shelf", "x": 9.4, "z": -3, "rot": 90 },
-		{ "type": "desk", "x": 12, "z": -7 }, { "type": "chair", "x": 12, "z": -6, "rot": 180 }, { "type": "plant", "x": 13.5, "z": -8 },
+		{ "type": "desk", "x": 8, "z": -3 }, { "type": "chair", "x": 8, "z": -2, "rot": 180 }, { "type": "cabinet", "x": 9.4, "z": -3, "rot": 90 },
 		{ "type": "lamp", "x": 10, "z": -5, "color": "cfe0ff" } ] },
 	{ "name": "Minimal green", "items": [
 		{ "type": "desk", "x": 0, "z": 0 }, { "type": "chair", "x": 0, "z": 1, "rot": 180 },
 		{ "type": "plant", "x": -2, "z": -1 }, { "type": "plant", "x": 2, "z": -1 },
-		{ "type": "plant", "x": -2, "z": 2 }, { "type": "plant", "x": 2, "z": 2 },
-		{ "type": "rug", "x": 0, "z": 0.5, "scale": 1.3, "color": "2f5a3a" } ] },
+		{ "type": "plant", "x": -2, "z": 2 }, { "type": "rug", "x": 0, "z": 0.5, "scale": 1.3, "color": "2f5a3a" } ] },
 ]
-var custom_presets: Array = []
 
 func setup(camera_rig: Node3D, camera: Camera3D) -> void:
 	rig = camera_rig
 	cam = camera
 
 func _ready() -> void:
-	_root = Node3D.new()
-	_root.name = "EditorLayout"
-	add_child(_root)
+	_root = Node3D.new(); _root.name = "EditorLayout"; add_child(_root)
 	_req = HTTPRequest.new(); add_child(_req); _req.request_completed.connect(_on_layout)
 	_save_req = HTTPRequest.new(); add_child(_save_req)
 	_preset_req = HTTPRequest.new(); add_child(_preset_req); _preset_req.request_completed.connect(_on_preset)
+	_assets_req = HTTPRequest.new(); add_child(_assets_req); _assets_req.request_completed.connect(_on_assets)
+	_make_highlight()
 	_build_ui()
 	_update_cam()
 	_req.request(LAYOUT_URL)
-	_preset_req.request("http://127.0.0.1:8787/presets")  # pull saved presets
+	_preset_req.request(PRESETS_URL)
+	_assets_req.request(ASSETS_URL)
 
 # ---------------------------------------------------------------- camera
 func _update_cam() -> void:
@@ -103,75 +99,97 @@ func _update_cam() -> void:
 		return
 	rig.position = BASE_TARGET
 	rig.rotation_degrees = Vector3(BASE_PITCH, yaw, 0.0)
-	cam.position = Vector3(0.0, 0.0, BASE_DIST)
+	cam.position = Vector3(0.0, 0.0, dist)
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventMouseButton:
-		if e.button_index == MOUSE_BUTTON_RIGHT or e.button_index == MOUSE_BUTTON_MIDDLE:
-			_dragging_cam = e.pressed
+		if e.button_index == MOUSE_BUTTON_WHEEL_UP:
+			dist = clampf(dist - 2.5, DIST_MIN, DIST_MAX); _update_cam()
+		elif e.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			dist = clampf(dist + 2.5, DIST_MIN, DIST_MAX); _update_cam()
+		elif e.button_index == MOUSE_BUTTON_RIGHT or e.button_index == MOUSE_BUTTON_MIDDLE:
+			_drag_cam = e.pressed
 		elif e.button_index == MOUSE_BUTTON_LEFT:
-			if e.pressed:
-				_on_left_press(e.position)
-			else:
-				_dragging_item = false
+			if e.pressed: _on_left_press(e.position)
+			else: _drag_item = false
 	elif e is InputEventMouseMotion:
-		if _dragging_cam:
-			# yaw only, clamped — locks height, distance and focus so the
-			# framing never drifts from the real wallpaper look.
-			yaw = clampf(yaw - e.relative.x * 0.06, BASE_YAW - YAW_LIMIT, BASE_YAW + YAW_LIMIT)
+		if _drag_cam:
+			yaw = clampf(yaw - e.relative.x * 0.08, BASE_YAW - YAW_LIMIT, BASE_YAW + YAW_LIMIT)
 			_update_cam()
-		elif _dragging_item and sel >= 0:
+		elif _drag_item and sel >= 0:
 			var hit := _floor_hit(e.position)
 			if hit != Vector3.INF:
 				items[sel]["dict"]["x"] = snappedf(hit.x, 0.1)
 				items[sel]["dict"]["z"] = snappedf(hit.z, 0.1)
 				items[sel]["node"].position.x = items[sel]["dict"]["x"]
 				items[sel]["node"].position.z = items[sel]["dict"]["z"]
+				_place_highlight()
 
 func _floor_hit(screen: Vector2) -> Vector3:
-	if cam == null:
-		return Vector3.INF
-	var origin := cam.project_ray_origin(screen)
-	var dir := cam.project_ray_normal(screen)
-	if absf(dir.y) < 0.0001:
-		return Vector3.INF
-	var tt := -origin.y / dir.y
-	if tt < 0:
-		return Vector3.INF
-	return origin + dir * tt
+	if cam == null: return Vector3.INF
+	var o := cam.project_ray_origin(screen)
+	var d := cam.project_ray_normal(screen)
+	if absf(d.y) < 0.0001: return Vector3.INF
+	var tt := -o.y / d.y
+	if tt < 0: return Vector3.INF
+	return o + d * tt
 
 func _on_left_press(screen: Vector2) -> void:
-	var hit := _floor_hit(screen)
-	if hit == Vector3.INF:
-		return
-	# nearest existing item within reach → select+drag; else place armed type
-	var best := -1
-	var best_d := 1.2
-	for i in items.size():
-		var d := Vector2(items[i]["dict"]["x"] - hit.x, items[i]["dict"]["z"] - hit.z).length()
-		if d < best_d:
-			best_d = d; best = i
-	if best >= 0:
-		sel = best
-		_dragging_item = true
-		_refresh_sel()
-	elif armed_type != "":
+	# real 3D pick: raycast against item colliders first
+	var space := get_world_3d().direct_space_state
+	var o := cam.project_ray_origin(screen)
+	var d := cam.project_ray_normal(screen)
+	var q := PhysicsRayQueryParameters3D.create(o, o + d * 500.0)
+	q.collide_with_areas = true
+	q.collide_with_bodies = true
+	var r := space.intersect_ray(q)
+	if r and r.has("collider"):
+		var node: Node = r["collider"]
+		while node and not node.has_meta("item_rig"):
+			node = node.get_parent()
+		if node:
+			for i in items.size():
+				if items[i]["node"] == node:
+					sel = i; _drag_item = true; _place_highlight(); _refresh_sel(); _refresh_scene(); return
+	# nothing hit → place armed item at floor point
+	if armed_type != "":
+		var hit := _floor_hit(screen)
+		if hit == Vector3.INF: return
 		var it := { "type": armed_type, "x": snappedf(hit.x, 0.1), "z": snappedf(hit.z, 0.1), "rot": 0.0, "scale": 1.0 }
-		if armed_asset != "":
-			it["asset"] = armed_asset
-		_add_item(it)
-		sel = items.size() - 1
-		_refresh_sel()
+		if armed_asset != "": it["asset"] = armed_asset
+		_add_item(it); sel = items.size() - 1; _place_highlight(); _refresh_sel(); _refresh_scene()
+	else:
+		sel = -1; _place_highlight(); _refresh_sel()
+
+# ---------------------------------------------------------------- highlight
+func _make_highlight() -> void:
+	_hi = MeshInstance3D.new()
+	var tm := TorusMesh.new(); tm.inner_radius = 0.7; tm.outer_radius = 0.95
+	_hi.mesh = tm
+	var m := StandardMaterial3D.new(); m.albedo_color = Color(0.4, 0.85, 1.0)
+	m.emission_enabled = true; m.emission = Color(0.4, 0.85, 1.0); m.emission_energy_multiplier = 2.0
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_hi.material_override = m
+	_hi.visible = false
+	add_child(_hi)
+
+func _place_highlight() -> void:
+	if sel < 0 or sel >= items.size():
+		_hi.visible = false; return
+	var it: Dictionary = items[sel]["dict"]
+	_hi.visible = true
+	_hi.position = Vector3(float(it.get("x", 0)), 0.06, float(it.get("z", 0)))
+	var s := float(it.get("scale", 1.0))
+	_hi.scale = Vector3(s, s, s)
 
 # ---------------------------------------------------------------- items
 func _on_layout(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
-	if code != 200:
-		return
+	if code != 200: return
 	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if data is Dictionary and data.get("items") is Array:
 		for it in data["items"]:
-			if it is Dictionary:
-				_add_item(it.duplicate())
+			if it is Dictionary: _add_item(it.duplicate(true))
+	_refresh_scene()
 
 func _add_item(it: Dictionary) -> void:
 	var node := _spawn(it)
@@ -185,283 +203,281 @@ func _mat(hex: String, rough := 0.8) -> StandardMaterial3D:
 	return m
 
 func _box(w: float, h: float, d: float, mat: StandardMaterial3D) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	var bm := BoxMesh.new(); bm.size = Vector3(w, h, d)
+	var mi := MeshInstance3D.new(); var bm := BoxMesh.new(); bm.size = Vector3(w, h, d)
 	mi.mesh = bm; mi.material_override = mat
 	return mi
 
 func _spawn(it: Dictionary) -> Node3D:
-	var rig := Node3D.new()
-	rig.position = Vector3(float(it.get("x", 0)), float(it.get("y", 0)), float(it.get("z", 0)))
-	rig.rotation_degrees = Vector3(0, float(it.get("rot", 0)), 0)
-	var s := float(it.get("scale", 1.0))
-	rig.scale = Vector3(s, s, s)
+	var rig2 := Node3D.new()
+	rig2.set_meta("item_rig", true)
+	rig2.position = Vector3(float(it.get("x", 0)), float(it.get("y", 0)), float(it.get("z", 0)))
+	rig2.rotation_degrees = Vector3(0, float(it.get("rot", 0)), 0)
+	var s := float(it.get("scale", 1.0)); rig2.scale = Vector3(s, s, s)
 	var col := String(it.get("color", ""))
+	var foot := Vector3(1.0, 1.0, 1.0)   # collider footprint
 	match String(it.get("type", "desk")):
 		"desk":
-			var top := _box(1.4, 0.08, 0.8, _mat(col if col != "" else "3a2e25", 0.5)); top.position.y = 0.74; rig.add_child(top)
+			var top := _box(1.4, 0.08, 0.8, _mat(col if col != "" else "3a2e25", 0.5)); top.position.y = 0.74; rig2.add_child(top)
 			for sx in [-0.6, 0.6]:
 				for sz in [-0.32, 0.32]:
-					var leg := _box(0.08, 0.74, 0.08, _mat("222831")); leg.position = Vector3(sx, 0.37, sz); rig.add_child(leg)
+					var leg := _box(0.08, 0.74, 0.08, _mat("222831")); leg.position = Vector3(sx, 0.37, sz); rig2.add_child(leg)
+			foot = Vector3(1.4, 0.9, 0.8)
 		"table":
-			var t := _box(1.1, 0.08, 1.1, _mat(col if col != "" else "4a3b2c", 0.5)); t.position.y = 0.7; rig.add_child(t)
-			var post := _box(0.12, 0.7, 0.12, _mat("2a2a2a")); post.position.y = 0.35; rig.add_child(post)
+			var t := _box(1.1, 0.08, 1.1, _mat(col if col != "" else "4a3b2c", 0.5)); t.position.y = 0.7; rig2.add_child(t)
+			var post := _box(0.12, 0.7, 0.12, _mat("2a2a2a")); post.position.y = 0.35; rig2.add_child(post); foot = Vector3(1.1, 0.8, 1.1)
 		"chair":
-			var seat := _box(0.45, 0.07, 0.45, _mat(col if col != "" else "5a6b8c", 0.6)); seat.position.y = 0.45; rig.add_child(seat)
-			var back := _box(0.45, 0.5, 0.07, _mat(col if col != "" else "5a6b8c", 0.6)); back.position = Vector3(0, 0.7, -0.19); rig.add_child(back)
+			var seat := _box(0.45, 0.07, 0.45, _mat(col if col != "" else "5a6b8c", 0.6)); seat.position.y = 0.45; rig2.add_child(seat)
+			var back := _box(0.45, 0.5, 0.07, _mat(col if col != "" else "5a6b8c", 0.6)); back.position = Vector3(0, 0.7, -0.19); rig2.add_child(back); foot = Vector3(0.5, 1.0, 0.5)
 		"shelf":
-			var body := _box(0.9, 1.6, 0.32, _mat(col if col != "" else "4a3a2a", 0.7)); body.position.y = 0.8; rig.add_child(body)
+			var bd := _box(0.9, 1.6, 0.32, _mat(col if col != "" else "4a3a2a", 0.7)); bd.position.y = 0.8; rig2.add_child(bd); foot = Vector3(0.9, 1.6, 0.4)
 		"plant":
-			var pot := _box(0.3, 0.3, 0.3, _mat("8a5a3a")); pot.position.y = 0.15; rig.add_child(pot)
+			var pot := _box(0.3, 0.3, 0.3, _mat("8a5a3a")); pot.position.y = 0.15; rig2.add_child(pot)
 			var lv := MeshInstance3D.new(); var sm := SphereMesh.new(); sm.radius = 0.32; sm.height = 0.7
-			lv.mesh = sm; lv.material_override = _mat(col if col != "" else "3c7a3c", 0.9); lv.position.y = 0.6; rig.add_child(lv)
+			lv.mesh = sm; lv.material_override = _mat(col if col != "" else "3c7a3c", 0.9); lv.position.y = 0.6; rig2.add_child(lv); foot = Vector3(0.5, 1.0, 0.5)
 		"lamp":
-			var stand := _box(0.06, 1.3, 0.06, _mat("333")); stand.position.y = 0.65; rig.add_child(stand)
+			var st := _box(0.06, 1.3, 0.06, _mat("333")); st.position.y = 0.65; rig2.add_child(st)
 			var light := OmniLight3D.new(); light.position.y = 1.35; light.light_energy = 2.0; light.omni_range = 5.0
-			light.light_color = Color(col) if col != "" else Color(1, 0.9, 0.7); rig.add_child(light)
+			light.light_color = Color(col) if col != "" else Color(1, 0.9, 0.7); rig2.add_child(light); foot = Vector3(0.4, 1.4, 0.4)
 		"rug":
-			var r := _box(2.0, 0.02, 1.5, _mat(col if col != "" else "7a3b4b", 0.95)); r.position.y = 0.02; rig.add_child(r)
+			var rg := _box(2.0, 0.02, 1.5, _mat(col if col != "" else "7a3b4b", 0.95)); rg.position.y = 0.02; rig2.add_child(rg); foot = Vector3(2.0, 0.2, 1.5)
+		"sofa":
+			var base := _box(1.6, 0.4, 0.7, _mat(col if col != "" else "44506b", 0.7)); base.position.y = 0.25; rig2.add_child(base)
+			var bk := _box(1.6, 0.5, 0.18, _mat(col if col != "" else "44506b", 0.7)); bk.position = Vector3(0, 0.6, -0.26); rig2.add_child(bk); foot = Vector3(1.6, 0.9, 0.8)
+		"tv":
+			var screen := _box(1.5, 0.85, 0.08, _mat("0a0a0c", 0.3)); screen.position.y = 1.1; rig2.add_child(screen)
+			var stnd := _box(0.1, 1.0, 0.1, _mat("222")); stnd.position.y = 0.5; rig2.add_child(stnd); foot = Vector3(1.5, 1.6, 0.4)
+		"whiteboard":
+			var wb := _box(1.6, 1.0, 0.06, _mat("f0f2f5", 0.4)); wb.position.y = 1.2; rig2.add_child(wb)
+			var fr := _box(0.06, 1.2, 0.06, _mat("888")); fr.position = Vector3(-0.8, 0.6, 0); rig2.add_child(fr)
+			var fr2 := _box(0.06, 1.2, 0.06, _mat("888")); fr2.position = Vector3(0.8, 0.6, 0); rig2.add_child(fr2); foot = Vector3(1.6, 1.8, 0.3)
+		"cabinet":
+			var cb := _box(0.9, 1.1, 0.5, _mat(col if col != "" else "6b7280", 0.6)); cb.position.y = 0.55; rig2.add_child(cb); foot = Vector3(0.9, 1.1, 0.5)
+		"cooler":
+			var bdy := _box(0.4, 1.1, 0.4, _mat("dfe7ef", 0.4)); bdy.position.y = 0.55; rig2.add_child(bdy)
+			var jug := _box(0.32, 0.4, 0.32, _mat("7ec8ff", 0.2)); jug.position.y = 1.25; rig2.add_child(jug); foot = Vector3(0.45, 1.5, 0.45)
 		"poster":
-			_spawn_poster(rig, String(it.get("asset", "")))
+			_spawn_poster(rig2, String(it.get("asset", ""))); foot = Vector3(1.3, 0.9, 0.2)
 		"model":
-			_spawn_model(rig, String(it.get("asset", "")))
+			_spawn_model(rig2, String(it.get("asset", ""))); foot = Vector3(1.4, 1.4, 1.4)
 		_:
-			var d := _box(0.6, 0.6, 0.6, _mat(col)); d.position.y = 0.3; rig.add_child(d)
-	return rig
+			var dd := _box(0.6, 0.6, 0.6, _mat(col)); dd.position.y = 0.3; rig2.add_child(dd)
+	# pick collider (invisible) sized to the item
+	var sb := StaticBody3D.new(); sb.collision_layer = 1; sb.collision_mask = 0
+	var cs := CollisionShape3D.new(); var bs := BoxShape3D.new(); bs.size = foot
+	cs.shape = bs; cs.position.y = foot.y * 0.5
+	sb.add_child(cs); rig2.add_child(sb)
+	return rig2
 
-func _spawn_poster(rig: Node3D, asset: String) -> void:
-	if asset == "":
-		return
+func _spawn_poster(rig2: Node3D, asset: String) -> void:
+	if asset == "": return
 	var img := Image.new()
-	if img.load(asset) != OK:
-		return
+	if img.load(asset) != OK: return
 	var mi := MeshInstance3D.new(); var qm := QuadMesh.new(); qm.size = Vector2(1.2, 0.8); mi.mesh = qm
 	var m := StandardMaterial3D.new(); m.albedo_texture = ImageTexture.create_from_image(img)
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mi.material_override = m; mi.position.y = 1.4; rig.add_child(mi)
+	mi.material_override = m; mi.position.y = 1.4; rig2.add_child(mi)
 
-func _spawn_model(rig: Node3D, asset: String) -> void:
-	if asset == "":
-		return
+func _spawn_model(rig2: Node3D, asset: String) -> void:
+	if asset == "": return
 	var ext := asset.get_extension().to_lower()
 	var scene: Node = null
 	if ext == "glb" or ext == "gltf":
-		var doc := GLTFDocument.new(); var st := GLTFState.new()
-		if doc.append_from_file(asset, st) == OK:
-			scene = doc.generate_scene(st)
+		var doc := GLTFDocument.new(); var stt := GLTFState.new()
+		if doc.append_from_file(asset, stt) == OK: scene = doc.generate_scene(stt)
 	elif ext == "fbx":
-		var doc := FBXDocument.new(); var st := GLTFState.new()
-		if doc.append_from_file(asset, st) == OK:
-			scene = doc.generate_scene(st)
+		var doc := FBXDocument.new(); var stt := GLTFState.new()
+		if doc.append_from_file(asset, stt) == OK: scene = doc.generate_scene(stt)
 	if scene:
-		rig.add_child(scene)
+		rig2.add_child(scene)
 		if play_anim:
 			var ap := scene.find_child("AnimationPlayer", true, false)
-			if ap and ap is AnimationPlayer:
-				var names := (ap as AnimationPlayer).get_animation_list()
-				if names.size() > 0:
-					(ap as AnimationPlayer).play(names[0])
-
-func _respawn(i: int) -> void:
-	if i < 0 or i >= items.size():
-		return
-	var old: Node3D = items[i]["node"]
-	old.queue_free()
-	var node := _spawn(items[i]["dict"])
-	_root.add_child(node)
-	items[i]["node"] = node
+			if ap and ap is AnimationPlayer and (ap as AnimationPlayer).get_animation_list().size() > 0:
+				(ap as AnimationPlayer).play((ap as AnimationPlayer).get_animation_list()[0])
 
 # ---------------------------------------------------------------- UI
 func _build_ui() -> void:
-	ui = Control.new()
-	ui.set_anchors_preset(Control.PRESET_FULL_RECT)
-	ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui = Control.new(); ui.set_anchors_preset(Control.PRESET_FULL_RECT); ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var layer := CanvasLayer.new(); layer.add_child(ui); add_child(layer)
 
-	# left palette panel
-	var panel := PanelContainer.new()
-	panel.position = Vector2(14, 14)
-	panel.custom_minimum_size = Vector2(212, 0)
-	var vb := VBoxContainer.new(); vb.add_theme_constant_override("separation", 6)
-	panel.add_child(vb)
+	# left: palette + presets + import
+	var panel := PanelContainer.new(); panel.position = Vector2(12, 12); panel.custom_minimum_size = Vector2(210, 0)
+	var sc := ScrollContainer.new(); sc.custom_minimum_size = Vector2(206, 540); panel.add_child(sc)
+	var vb := VBoxContainer.new(); vb.add_theme_constant_override("separation", 5); vb.custom_minimum_size = Vector2(196, 0); sc.add_child(vb)
 	var title := Label.new(); title.text = "🎨 OFFICE EDITOR"; vb.add_child(title)
-	var hint := Label.new(); hint.text = "คลิกวาง · ลากย้าย · ขวา/กลางหมุนกล้อง"
-	hint.add_theme_font_size_override("font_size", 10); vb.add_child(hint)
+	var hint := Label.new(); hint.text = "คลิกวัตถุ=เลือก · ลาก=ย้าย · ขวาหมุน · ลูกกลิ้งซูม"
+	hint.add_theme_font_size_override("font_size", 9); hint.autowrap_mode = TextServer.AUTOWRAP_WORD; vb.add_child(hint)
 	for t in TYPES:
 		var b := Button.new(); b.text = t[1]
 		b.pressed.connect(func(): armed_type = t[0]; armed_asset = ""; _flash("วาง: " + t[1]))
 		vb.add_child(b)
-	# presets
-	var pl := Label.new(); pl.text = "— Presets —"; pl.add_theme_font_size_override("font_size", 10); vb.add_child(pl)
-	var pbtn := OptionButton.new(); pbtn.name = "PresetPick"
-	pbtn.add_item("เลือก preset…")
-	for pr in PRESETS:
-		pbtn.add_item("⭐ " + pr["name"])
-	pbtn.item_selected.connect(_on_preset_picked)
-	vb.add_child(pbtn)
-	# import + library
+	var pl := Label.new(); pl.text = "— Presets (layout) —"; pl.add_theme_font_size_override("font_size", 10); vb.add_child(pl)
+	var pbtn := OptionButton.new(); pbtn.name = "PresetPick"; pbtn.add_item("เลือก preset…")
+	for pr in PRESETS: pbtn.add_item("⭐ " + pr["name"])
+	pbtn.item_selected.connect(_on_preset_picked); vb.add_child(pbtn)
 	var imp := Button.new(); imp.text = "📦 Import .glb"; imp.pressed.connect(_import_model); vb.add_child(imp)
 	var pst := Button.new(); pst.text = "🖼 Import image"; pst.pressed.connect(_import_image); vb.add_child(pst)
-	var lib := Label.new(); lib.name = "LibLabel"; lib.text = "คลังโมเดล: (ว่าง)"
-	lib.add_theme_font_size_override("font_size", 10); vb.add_child(lib)
-	var animchk := CheckButton.new(); animchk.text = "เล่น animation โมเดล"; animchk.button_pressed = true
-	animchk.toggled.connect(func(on): play_anim = on); vb.add_child(animchk)
-	var save := Button.new(); save.text = "💾 บันทึก (อัปเดตวอลเปเปอร์)"; save.pressed.connect(_save); vb.add_child(save)
+	var ac := CheckButton.new(); ac.text = "เล่น animation"; ac.button_pressed = true
+	ac.toggled.connect(func(on): play_anim = on); vb.add_child(ac)
+	var save := Button.new(); save.text = "💾 บันทึก"; save.pressed.connect(_save); vb.add_child(save)
 	var savep := Button.new(); savep.text = "⭐ บันทึกเป็น preset"; savep.pressed.connect(_save_as_preset); vb.add_child(savep)
 	ui.add_child(panel)
-	_refresh_lib()
 
-	# right selected-item panel
-	var sp := PanelContainer.new(); sp.name = "SelPanel"
-	sp.anchor_left = 1.0; sp.anchor_right = 1.0
-	sp.position = Vector2(-230, 14); sp.custom_minimum_size = Vector2(216, 0)
-	var sv := VBoxContainer.new(); sv.name = "SelBox"; sv.add_theme_constant_override("separation", 6); sp.add_child(sv)
-	ui.add_child(sp)
-	sp.visible = false
+	# right top: selected item
+	var sp := PanelContainer.new(); sp.name = "SelPanel"; sp.anchor_left = 1.0; sp.anchor_right = 1.0
+	sp.position = Vector2(-232, 12); sp.custom_minimum_size = Vector2(218, 0)
+	var sv := VBoxContainer.new(); sv.name = "SelBox"; sv.add_theme_constant_override("separation", 5); sp.add_child(sv)
+	ui.add_child(sp); sp.visible = false
 
-	# status toast
-	var toast := Label.new(); toast.name = "Toast"
-	toast.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	toast.position = Vector2(-100, -50); ui.add_child(toast)
+	# right bottom: SCENE list
+	var scp := PanelContainer.new(); scp.anchor_left = 1.0; scp.anchor_right = 1.0; scp.anchor_top = 1.0; scp.anchor_bottom = 1.0
+	scp.position = Vector2(-232, -250); scp.custom_minimum_size = Vector2(218, 230)
+	var scvb := VBoxContainer.new(); scp.add_child(scvb)
+	var scl := Label.new(); scl.text = "🗂 SCENE — วัตถุที่วาง"; scvb.add_child(scl)
+	var ssc := ScrollContainer.new(); ssc.custom_minimum_size = Vector2(210, 190); scvb.add_child(ssc)
+	var slist := VBoxContainer.new(); slist.name = "SceneList"; slist.custom_minimum_size = Vector2(200, 0); ssc.add_child(slist)
+	ui.add_child(scp)
+
+	# left bottom: LIBRARY (imported assets)
+	var lp := PanelContainer.new(); lp.anchor_top = 1.0; lp.anchor_bottom = 1.0
+	lp.position = Vector2(12, -210); lp.custom_minimum_size = Vector2(210, 190)
+	var lvb := VBoxContainer.new(); lp.add_child(lvb)
+	var ll := Label.new(); ll.text = "🗃 LIBRARY — โมเดล/รูปที่ import"; ll.add_theme_font_size_override("font_size", 11); lvb.add_child(ll)
+	var lsc := ScrollContainer.new(); lsc.custom_minimum_size = Vector2(202, 150); lvb.add_child(lsc)
+	var llist := VBoxContainer.new(); llist.name = "LibList"; llist.custom_minimum_size = Vector2(192, 0); lsc.add_child(llist)
+	ui.add_child(lp)
+
+	var toast := Label.new(); toast.name = "Toast"; toast.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	toast.position = Vector2(-120, -40); ui.add_child(toast)
 
 func _flash(msg: String) -> void:
 	var toast := ui.find_child("Toast", true, false)
-	if toast and toast is Label:
-		(toast as Label).text = msg
+	if toast and toast is Label: (toast as Label).text = msg
 
 func _refresh_sel() -> void:
 	var sp := ui.find_child("SelPanel", true, false)
 	var sv := ui.find_child("SelBox", true, false)
-	if sp == null or sv == null:
-		return
-	for c in sv.get_children():
-		c.queue_free()
+	if sp == null or sv == null: return
+	for c in sv.get_children(): c.queue_free()
 	if sel < 0 or sel >= items.size():
-		sp.visible = false
-		return
+		sp.visible = false; return
 	sp.visible = true
 	var it: Dictionary = items[sel]["dict"]
 	var lbl := Label.new(); lbl.text = "⚙ " + String(it.get("type", "")); sv.add_child(lbl)
-	# rotate
 	var rl := Label.new(); rl.text = "หมุน"; sv.add_child(rl)
 	var rot := HSlider.new(); rot.min_value = 0; rot.max_value = 360; rot.value = float(it.get("rot", 0))
-	rot.value_changed.connect(func(v):
-		it["rot"] = v
-		items[sel]["node"].rotation_degrees.y = v)
-	sv.add_child(rot)
-	# scale
-	var sl := Label.new(); sl.text = "ขนาด"; sv.add_child(sl)
+	rot.value_changed.connect(func(v): it["rot"] = v; items[sel]["node"].rotation_degrees.y = v); sv.add_child(rot)
+	var slb := Label.new(); slb.text = "ขนาด"; sv.add_child(slb)
 	var scl := HSlider.new(); scl.min_value = 0.4; scl.max_value = 3.0; scl.step = 0.1; scl.value = float(it.get("scale", 1))
-	scl.value_changed.connect(func(v):
-		it["scale"] = v
-		items[sel]["node"].scale = Vector3(v, v, v))
-	sv.add_child(scl)
-	# delete
+	scl.value_changed.connect(func(v): it["scale"] = v; items[sel]["node"].scale = Vector3(v, v, v); _place_highlight()); sv.add_child(scl)
 	var del := Button.new(); del.text = "🗑 ลบ"
 	del.pressed.connect(func():
-		items[sel]["node"].queue_free()
-		items.remove_at(sel)
-		sel = -1
-		_refresh_sel())
-	sv.add_child(del)
+		items[sel]["node"].queue_free(); items.remove_at(sel); sel = -1
+		_place_highlight(); _refresh_sel(); _refresh_scene()); sv.add_child(del)
 
-func _import_model() -> void:
-	_pick_file(["*.glb", "*.gltf", "*.fbx"], func(path):
-		armed_type = "model"; armed_asset = path
-		if not imported_models.has(path):
-			imported_models.append(path)
-		_refresh_lib()
-		_flash("คลิกวางโมเดล"))
+func _refresh_scene() -> void:
+	var box := ui.find_child("SceneList", true, false)
+	if box == null: return
+	for c in box.get_children(): c.queue_free()
+	for i in items.size():
+		var b := Button.new(); b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.text = "%d. %s" % [i + 1, String(items[i]["dict"].get("type", ""))]
+		b.add_theme_font_size_override("font_size", 11)
+		var idx := i
+		b.pressed.connect(func(): sel = idx; _place_highlight(); _refresh_sel())
+		box.add_child(b)
 
-func _import_image() -> void:
-	_pick_file(["*.png", "*.jpg", "*.jpeg", "*.webp"], func(path):
-		armed_type = "poster"; armed_asset = path; _flash("คลิกวางรูป"))
+func _refresh_lib() -> void:
+	var box := ui.find_child("LibList", true, false)
+	if box == null: return
+	for c in box.get_children(): c.queue_free()
+	if library.is_empty():
+		var e := Label.new(); e.text = "(ว่าง — กด Import)"; e.add_theme_font_size_override("font_size", 10); box.add_child(e); return
+	for a in library:
+		var row := HBoxContainer.new()
+		var b := Button.new(); b.alignment = HORIZONTAL_ALIGNMENT_LEFT; b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var icon := "📦 " if a.get("kind") == "model" else "🖼 "
+		b.text = icon + String(a.get("name", "")); b.add_theme_font_size_override("font_size", 10)
+		var ap := String(a.get("path", "")); var ak := String(a.get("kind", "model"))
+		b.pressed.connect(func(): armed_type = ("model" if ak == "model" else "poster"); armed_asset = ap; _flash("คลิกวาง: " + String(a.get("name", ""))))
+		row.add_child(b)
+		var x := Button.new(); x.text = "✕"; x.add_theme_font_size_override("font_size", 10)
+		x.pressed.connect(func():
+			_assets_req.request(ASSETS_URL, ["content-type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({ "remove": ap }))
+			library = library.filter(func(z): return z.get("path") != ap); _refresh_lib())
+		row.add_child(x)
+		box.add_child(row)
 
-func _pick_file(filters: PackedStringArray, cb: Callable) -> void:
-	var fd := FileDialog.new()
-	fd.file_mode = FileDialog.FILE_MODE_OPEN_FILE
-	fd.access = FileDialog.ACCESS_FILESYSTEM
-	fd.filters = filters
-	fd.use_native_dialog = true
-	add_child(fd)
-	fd.file_selected.connect(func(p): cb.call(p); fd.queue_free())
-	fd.canceled.connect(func(): fd.queue_free())
-	fd.popup_centered(Vector2i(800, 560))
+# ---------------------------------------------------------------- presets / assets
+func _on_preset_picked(idx: int) -> void:
+	if idx <= 0: return
+	var list := PRESETS + custom_presets
+	if idx - 1 < list.size(): _load_preset(list[idx - 1])
+
+func _load_preset(pr: Dictionary) -> void:
+	for c in _root.get_children(): c.queue_free()
+	items.clear(); sel = -1; _place_highlight()
+	for it in pr.get("items", []):
+		if it is Dictionary: _add_item(it.duplicate(true))
+	_refresh_sel(); _refresh_scene()
+	_flash("⭐ โหลด: " + String(pr.get("name", "")))
 
 func _current_items() -> Array:
 	var out: Array = []
-	for e in items:
-		out.append(e["dict"])
+	for e in items: out.append(e["dict"])
 	return out
 
 func _save() -> void:
-	var body := JSON.stringify({ "items": _current_items() })
-	_save_req.request(LAYOUT_URL, ["content-type: application/json"], HTTPClient.METHOD_POST, body)
+	_save_req.request(LAYOUT_URL, ["content-type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({ "items": _current_items() }))
 	_flash("💾 บันทึกแล้ว — วอลเปเปอร์อัปเดต")
 
-# ---------------------------------------------------------------- presets
-func _on_preset_picked(idx: int) -> void:
-	if idx <= 0:
-		return
-	var list := PRESETS + custom_presets
-	if idx - 1 >= list.size():
-		return
-	_load_preset(list[idx - 1])
-
-func _load_preset(pr: Dictionary) -> void:
-	for c in _root.get_children():
-		c.queue_free()
-	items.clear()
-	sel = -1
-	for it in pr.get("items", []):
-		if it is Dictionary:
-			_add_item(it.duplicate(true))
-	_refresh_sel()
-	_flash("⭐ โหลด preset: " + String(pr.get("name", "")))
-
 func _save_as_preset() -> void:
-	# tiny inline name prompt
-	var dlg := AcceptDialog.new()
-	dlg.title = "บันทึกเป็น preset"
+	var dlg := AcceptDialog.new(); dlg.title = "บันทึกเป็น preset"
 	var le := LineEdit.new(); le.placeholder_text = "ชื่อ preset"; le.custom_minimum_size = Vector2(260, 0)
-	dlg.add_child(le)
-	dlg.register_text_enter(le)
-	add_child(dlg)
+	dlg.add_child(le); dlg.register_text_enter(le); add_child(dlg)
 	dlg.confirmed.connect(func():
 		var nm := le.text.strip_edges()
 		if nm != "":
-			var body := JSON.stringify({ "name": nm, "items": _current_items() })
-			_save_req.request("http://127.0.0.1:8787/presets", ["content-type: application/json"], HTTPClient.METHOD_POST, body)
+			_save_req.request(PRESETS_URL, ["content-type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({ "name": nm, "items": _current_items() }))
 			_flash("⭐ บันทึก preset: " + nm)
-			_preset_req.request("http://127.0.0.1:8787/presets")  # refresh list
+			_preset_req.request(PRESETS_URL)
 		dlg.queue_free())
 	dlg.canceled.connect(func(): dlg.queue_free())
-	dlg.popup_centered(Vector2i(320, 130))
-	le.grab_focus()
+	dlg.popup_centered(Vector2i(320, 130)); le.grab_focus()
 
 func _on_preset(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
-	if code != 200:
-		return
+	if code != 200: return
 	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
 	if data is Dictionary and data.get("presets") is Array:
 		custom_presets = data["presets"]
 		var pick := ui.find_child("PresetPick", true, false)
 		if pick and pick is OptionButton:
 			var ob := pick as OptionButton
-			# rebuild: default + custom
-			while ob.item_count > 1 + PRESETS.size():
-				ob.remove_item(ob.item_count - 1)
-			for cp in custom_presets:
-				ob.add_item("🔸 " + String(cp.get("name", "")))
+			while ob.item_count > 1 + PRESETS.size(): ob.remove_item(ob.item_count - 1)
+			for cp in custom_presets: ob.add_item("🔸 " + String(cp.get("name", "")))
 
-func _refresh_lib() -> void:
-	var lbl := ui.find_child("LibLabel", true, false)
-	if lbl == null or not (lbl is Label):
-		return
-	if imported_models.is_empty():
-		(lbl as Label).text = "คลังโมเดล: (ว่าง)"
-	else:
-		var names: Array = []
-		for m in imported_models:
-			names.append(String(m).get_file())
-		(lbl as Label).text = "คลังโมเดล: " + ", ".join(names)
+func _on_assets(_r: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
+	if code != 200: return
+	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if data is Dictionary and data.get("assets") is Array:
+		library = data["assets"]; _refresh_lib()
+
+func _register_asset(path: String, kind: String) -> void:
+	_assets_req.request(ASSETS_URL, ["content-type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({ "path": path, "kind": kind }))
+	if not library.any(func(a): return a.get("path") == path):
+		library.append({ "path": path, "kind": kind, "name": path.get_file() }); _refresh_lib()
+
+func _import_model() -> void:
+	_pick_file(["*.glb", "*.gltf", "*.fbx"], func(p):
+		armed_type = "model"; armed_asset = p; _register_asset(p, "model"); _flash("คลิกวางโมเดล"))
+
+func _import_image() -> void:
+	_pick_file(["*.png", "*.jpg", "*.jpeg", "*.webp"], func(p):
+		armed_type = "poster"; armed_asset = p; _register_asset(p, "image"); _flash("คลิกวางรูป"))
+
+func _pick_file(filters: PackedStringArray, cb: Callable) -> void:
+	var fd := FileDialog.new(); fd.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	fd.access = FileDialog.ACCESS_FILESYSTEM; fd.filters = filters; fd.use_native_dialog = true
+	add_child(fd)
+	fd.file_selected.connect(func(p): cb.call(p); fd.queue_free())
+	fd.canceled.connect(func(): fd.queue_free())
+	fd.popup_centered(Vector2i(800, 560))
