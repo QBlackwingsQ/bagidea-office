@@ -85,7 +85,13 @@ func _enter_editor_mode() -> void:
 	# a normal, framed, resizable window (NOT the wallpaper)
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_BORDERLESS, false)
-	DisplayServer.window_set_size(Vector2i(1280, 800))
+	var win := Vector2i(1280, 800)
+	DisplayServer.window_set_size(win)
+	# center on the active screen (it opened off to one side otherwise)
+	var scr := DisplayServer.window_get_current_screen()
+	var sp := DisplayServer.screen_get_position(scr)
+	var ss := DisplayServer.screen_get_size(scr)
+	DisplayServer.window_set_position(sp + (ss - win) / 2)
 	DisplayServer.window_set_title("BagIdea Office — 3D Editor")
 	# Opaque window with the office SKY as the background — no black splash
 	# (the procedural sky fills any empty area; a see-through window just
