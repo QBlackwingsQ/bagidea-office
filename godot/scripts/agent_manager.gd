@@ -488,8 +488,10 @@ func _spawn_ghost(parent_id: String, sub: String, job: String) -> void:
 func _ghost_desk_route(g: Sprite3D, spot: Vector3) -> Array:
 	var pts: Array = []
 	if g.position.y <= 1.5:
-		pts += world.path_to(g.position, "server_c")
-		pts.append(world.ghost_stair_base())
+		# Walk straight to the stair FOOT (wherever the deck sits now) along the
+		# A* graph — not via a hardcoded server room, which caused the ghost to
+		# detour through the wrong room before finding the stairs.
+		pts += world.path_between(g.position, world.ghost_stair_base())
 	pts.append(world.ghost_stair_top())
 	pts.append(spot)
 	return pts
@@ -554,6 +556,17 @@ func _security_walk_after_grace(a: Dictionary, id: String, task: String) -> void
 	_pulse_security()
 	world.board_set(task, "blocked", id)
 
+## Same grace for a ghost: only head down to Security if still unresolved.
+func _ghost_security_after_grace(id: String) -> void:
+	await get_tree().create_timer(0.5).timeout
+	if not _sec_pending.erase("g:" + id):
+		return   # approved/denied already landed — it never had to leave
+	if not ghosts.has(id) or not is_instance_valid(ghosts[id].node):
+		return
+	var g: Sprite3D = ghosts[id].node
+	g.walk_to(_ghost_ground_route(g, "sec_window"))
+	_pulse_security()
+
 ## The Ghost Deck moved (editor nudge) or rooms were swapped → re-target every
 ## working ghost to the deck's CURRENT desk world position, live, even mid-task.
 func reseat_ghosts() -> void:
@@ -573,17 +586,22 @@ func _route_hook_to_ghost(id: String, type: String, evt: Dictionary) -> void:
 		"task.progress":
 			g.set_status(str(evt.get("tool", "working…")))
 		"perm.requested":
-			# Ghosts answer to Security like everyone else: down the stairs,
-			# over to the window, wait for the stamp.
+			# Like everyone else: don't leave the desk until we know a trip is
+			# really needed — granted tools auto-approve in a blink. Only after the
+			# grace (still unresolved) does the ghost head down to Security.
 			g.set_status("needs approval ⚠")
-			g.walk_to(_ghost_ground_route(g, "sec_window"))
-			_pulse_security()
+			_sec_pending["g:" + id] = true
+			_ghost_security_after_grace(id)
 		"perm.approved":
 			g.set_status("approved ✓")
-			g.walk_to(_ghost_desk_route(g, gh.spot))
+			# If it was still waiting (never left its desk), just keep working;
+			# only walk back if it actually went down to Security.
+			if not _sec_pending.erase("g:" + id):
+				g.walk_to(_ghost_desk_route(g, gh.spot))
 		"perm.denied":
 			g.set_status("denied ✗")
-			g.walk_to(_ghost_desk_route(g, gh.spot))
+			if not _sec_pending.erase("g:" + id):
+				g.walk_to(_ghost_desk_route(g, gh.spot))
 
 # ---------------------------------------------------------------- agents
 
@@ -821,15 +839,19 @@ func _main_wander_loop() -> void:
 ## Keep `follower` glued to `target` without EVER cutting walls: steer at
 ## close range, A* re-route when far. Runs until `until.call()` is true.
 func _tail_loop(follower: Sprite3D, target: Node3D, offset: Vector3, until: Callable) -> void:
-	var next_path := 0.0
+	var last_tp := Vector3(INF, INF, INF)
 	while is_instance_valid(follower) and is_instance_valid(target) and not until.call():
-		var now := Time.get_ticks_msec() / 1000.0
-		var dist := follower.position.distance_to(target.position + offset)
+		var tp: Vector3 = target.position + offset
+		var dist := follower.position.distance_to(tp)
 		if dist > 3.2:
-			if now >= next_path:
-				next_path = now + 2.2  # don't restart the walk every tick
+			# Re-path ONLY when the target actually moved. Re-routing toward a
+			# standing target every tick makes A* re-pick the nearest node (often
+			# one just BEHIND the walker), so the Director kept jinking backward
+			# the whole way over. One clean path to a stationary boss = no jitter.
+			if (last_tp - tp).length() > 0.6:
+				last_tp = tp
 				follower.unfollow()
-				follower.walk_to(world.path_between(follower.position, target.position + offset))
+				follower.walk_to(world.path_between(follower.position, tp))
 		elif follower.follow_node != target:
 			follower.follow(target, offset)
 		await get_tree().create_timer(0.6).timeout
