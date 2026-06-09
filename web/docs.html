@@ -42,6 +42,7 @@
     <a href="#security" data-i18n="dn_security">Permissions</a>
     <a href="#editor" data-i18n="dn_editor">3D Editor</a>
     <a href="#voice" data-i18n="dn_voice">Voice & channels</a>
+    <a href="#updates" data-i18n="dn_updates">Updates & start-up</a>
     <h4 data-i18n="dn_features">More</h4>
     <a href="#plugins" data-i18n="dn_plugins">Plugins & skills</a>
     <a href="#lang" data-i18n="dn_lang">Languages</a>
@@ -126,6 +127,9 @@ bagidea start   # launch the office</code></pre>
     <h3 id="voice" data-i18n="d_voice_h">Voice & channels</h3>
     <p data-i18n="d_voice_p">Hold F6 anywhere to speak a command to the office. Give agents one of 16 TTS voices (split clearly ♀/♂). Call the main agent for a realtime voice conversation (Gemini Live) in its assigned voice. Connect Telegram, Discord or LINE and command your office from your phone — replies come back on the same channel.</p>
 
+    <h3 id="updates" data-i18n="d_updates_h">Updates &amp; start-up</h3>
+    <p data-i18n="d_updates_p">A VERSION file marks real releases: the office only shows the 🔄 update banner when main's version is newer than yours, so routine commits never nag you. Click the banner or run bagidea update to pull, rebuild and relaunch (your data is kept). Set it to launch with Windows from the tray, settings, or bagidea startup on.</p>
+
     <h2 id="plugins" data-i18n="d_plugins_h">Plugins, skills & tools</h2>
     <p data-i18n="d_plugins_p">Plugins extend the office for real — a folder with a manifest can add UI panels, HTTP routes, and commands agents can drive, with ctx access to the registry, feed, broadcasting and even running Claude turns. Two core plugins ship in the box (🎵 Music Player, 🧮 Calculator); install more from any GitHub repo. Start from the official template, or read the worked example repos.</p>
     <pre><code>bagidea plugin install https://github.com/bagidea/bagidea-office-template</code></pre>
@@ -156,7 +160,8 @@ bagidea start   # launch the office</code></pre>
       <tr><td><code>bagidea image "&lt;prompt&gt;"</code></td><td>Generate an AI image into the office</td></tr>
       <tr><td><code>bagidea channels · keys</code></td><td>Channel + API-key status</td></tr>
       <tr><td><code>bagidea feed</code></td><td>Live office event stream in your terminal</td></tr>
-      <tr><td><code>bagidea update</code></td><td>Update to the latest version + relaunch</td></tr>
+      <tr><td><code>bagidea startup [on|off]</code></td><td>Launch the office with Windows (show / set)</td></tr>
+      <tr><td><code>bagidea update · version</code></td><td>Update to the latest release · show current version</td></tr>
       <tr><td><code>bagidea --help · --version</code></td><td>Full command list / current build</td></tr>
     </table>
     <img src="img/cli.png" alt="bagidea CLI help">

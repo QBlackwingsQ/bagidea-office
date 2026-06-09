@@ -293,6 +293,14 @@ loadReg();
 
 // Live (not journaled): registry.json is the persistence; every WS client
 // also gets a fresh snapshot on connect.
+// Hire cap: the office floor is small and sub-agents (👻 ghosts) handle
+// parallel load — keep the staff to MAX_STAFF (CEO not counted). Shared by the
+// hire endpoint and the roster sync (so the UI can show "N/MAX").
+const MAX_STAFF = 18;
+function staffCount() {
+  return Object.keys(reg.agents).filter((k) => k !== "ceo").length;
+}
+
 // Which program features the MAIN keys currently unlock — booleans only,
 // never the keys themselves. Rides on roster.sync so the UI gates live.
 function featuresMap() {
@@ -309,6 +317,7 @@ function rosterEvt() {
     sound: reg.sound !== false, heartbeatMin: Number(reg.heartbeatMin || 0),
     features: featuresMap(), tts: reg.tts !== false,
     socialMin: Number(reg.socialMin !== undefined ? reg.socialMin : 60),
+    maxStaff: MAX_STAFF, staffCount: staffCount(),
     lang: reg.lang || "en" };
 }
 
@@ -843,6 +852,7 @@ setInterval(() => {
   if (hb > 0 && now - lastHeartbeat >= hb * 60000 && agentBusy.size === 0)
     heartbeat();
   socialTick(now);
+  ambientTick(now);
   sweepProjects();
 }, 30000);
 sweepProjects();
@@ -987,11 +997,11 @@ function runClaude(agent, prompt, opts = {}) {
   const VOICE_NOTE = canSpeak ? `
 
 <voice-capability>
-คุณมีเสียงพูดจริงในออฟฟิศ. เฉพาะเมื่อ "ควรประกาศ" จริงๆ (งานสำคัญเสร็จ, มีเรื่องเด่น
-ต้องบอกเจ้าของ) ให้จบคำตอบด้วยบรรทัด:
-SPEAK: <ประโยคพูดสั้นๆ เป็นธรรมชาติ ภาษาเดียวกับเจ้าของ>
-ส่วนใหญ่ของข้อความ "ไม่ต้องพูด" — นี่คือสีสัน ไม่ใช่การอ่านทุกอย่าง.
-ข้อยกเว้น: ถ้าเจ้าของขอให้อ่าน/เล่าด้วยเสียง ใส่เนื้อหาที่อ่านทั้งหมดใน SPEAK ได้เลย.
+คุณมีเสียงพูดจริงในออฟฟิศ — ใช้เพิ่มสีสันได้. เมื่อมีบรรทัดสั้นๆ ที่ "พูดออกมาแล้วน่ารัก/
+เป็นธรรมชาติ" (ทักทาย, ยืนยันสั้นๆ, ประกาศงานเสร็จ, สรุปหนึ่งประโยค) ให้จบคำตอบด้วยบรรทัด:
+SPEAK: <ประโยคพูดสั้นๆ 1 ประโยค เป็นธรรมชาติ ภาษาเดียวกับเจ้าของ>
+ทำได้บ่อยพอประมาณให้ออฟฟิศมีชีวิต แต่ "พูดสั้นเสมอ" — อย่าอ่านทั้งข้อความ.
+ข้อยกเว้นเดียว: ถ้าเจ้าของสั่งให้อ่าน/รายงานด้วยเสียงแบบเต็มๆ ค่อยใส่เนื้อหายาวใน SPEAK ได้.
 </voice-capability>` : "";
   child.stdin.write(preamble + prompt + (canSplit ? SUB_NOTE : "") + VOICE_NOTE + projectNote());
   child.stdin.end();
@@ -1547,6 +1557,27 @@ const VOICE_PRESETS = {
   narrator: { voice: "Rasalgethi",  label: "♂ 🎙 นักเล่าเรื่อง",    style: "พูดแบบผู้บรรยายให้ข้อมูล จังหวะดี น่าติดตาม" },
   buddy:    { voice: "Achird",      label: "♂ 😄 เป็นมิตร",         style: "พูดเป็นมิตร เป็นกันเอง อบอุ่น เหมือนพี่ชายใจดี" },
 };
+// Each preset is tagged ♀/♂ in its label — read the gender straight off it so a
+// voice preview introduces itself correctly (no more everyone saying "ค่ะ").
+function voiceGender(presetId) {
+  const lbl = (VOICE_PRESETS[presetId] || {}).label || "";
+  return lbl.indexOf("♂") >= 0 ? "m" : "f";
+}
+// Gender- + language-aware self-introduction for the voice preview button.
+// Falls back to English for languages we don't have a line for.
+const VOICE_INTRO = {
+  th: { f: "สวัสดีค่ะ ฉันเป็นเสียงผู้หญิงเสียงหนึ่งของออฟฟิศนี้ ฝากตัวด้วยนะคะ",
+        m: "สวัสดีครับ ผมเป็นเสียงผู้ชายเสียงหนึ่งของออฟฟิศนี้ ฝากตัวด้วยนะครับ" },
+  en: { f: "Hi there! I'm one of the office's female voices — lovely to meet you!",
+        m: "Hey! I'm one of the office's male voices — great to meet you!" },
+  ja: { f: "こんにちは、このオフィスの女性ボイスのひとりです。よろしくね！",
+        m: "やあ、このオフィスの男性ボイスのひとりだよ。よろしく！" },
+};
+function voiceIntro(presetId, lang) {
+  const g = voiceGender(presetId);
+  const L = VOICE_INTRO[lang] || VOICE_INTRO.en;
+  return L[g] || VOICE_INTRO.en[g];
+}
 
 function pcmToWav(pcm, rate) {
   const hdr = Buffer.alloc(44);
@@ -1665,36 +1696,67 @@ function genImage(prompt) {
 }
 
 // ---------------------------------------------------------------- updates
-// Quietly compare local HEAD with GitHub main; when they differ the office
-// shows a 🔄 banner and `bagidea update` / POST /update runs the updater.
-let updateSha = null;
+// A release = a bump of the VERSION file on the `main` branch. We compare the
+// LOCAL VERSION with main's VERSION (raw), so routine commits (docs, web, work
+// on a dev branch) never nag users — only a real, deliberate release does.
+// When they differ the office shows a 🔄 banner and `bagidea update` /
+// POST /update runs the updater (git pull + rebuild + relaunch).
+function localVersion() {
+  try { return String(fs.readFileSync(path.join(__dirname, "..", "VERSION"), "utf8")).trim(); }
+  catch { return "0.0.0"; }
+}
+const APP_VERSION = localVersion();
+let latestVersion = APP_VERSION;   // newest seen on main (for /version + banner)
+let updateNotified = null;
 function checkUpdate() {
-  const { execFile } = require("child_process");
-  execFile("git", ["rev-parse", "HEAD"], { cwd: path.join(__dirname, "..") }, (e, out) => {
-    if (e) return;
-    const local = String(out).trim();
-    require("https").get({
-      host: "api.github.com",
-      path: "/repos/bagidea/bagidea-office/commits/main",
-      headers: { "user-agent": "bagidea-office" },
-    }, (res) => {
-      let b = "";
-      res.on("data", (c) => (b += c));
-      res.on("end", () => {
-        try {
-          const j = JSON.parse(b);
-          if (j.sha && j.sha !== local && updateSha !== j.sha) {
-            updateSha = j.sha;
-            broadcast({ type: "update.available", sha: j.sha.slice(0, 7) }, false);
-            console.log("[update] new version available", j.sha.slice(0, 7));
-          }
-        } catch {}
-      });
-    }).on("error", () => {});
-  });
+  const local = localVersion();
+  require("https").get({
+    host: "raw.githubusercontent.com",
+    path: "/bagidea/bagidea-office/main/VERSION",
+    headers: { "user-agent": "bagidea-office" },
+  }, (res) => {
+    if (res.statusCode !== 200) { res.resume(); return; }
+    let b = "";
+    res.on("data", (c) => (b += c));
+    res.on("end", () => {
+      const remote = String(b).trim().split(/\s+/)[0];
+      if (!/^\d+\.\d+\.\d+/.test(remote)) return;   // guard against 404 pages etc.
+      latestVersion = remote;
+      if (remote !== local && updateNotified !== remote) {
+        updateNotified = remote;
+        broadcast({ type: "update.available", version: remote, current: local }, false);
+        console.log("[update] new version available:", remote, "(have", local + ")");
+      }
+    });
+  }).on("error", () => {});
 }
 setTimeout(checkUpdate, 90000);
 setInterval(checkUpdate, 6 * 3600000);
+
+// ---------------------------------------------------------------- autostart
+// Launch-with-Windows, toggleable from the tray, the CLI and settings. All
+// three write the SAME HKCU Run value so they stay in sync. The value points
+// at the shell exe (the same boot entrypoint the tray's current_exe() uses).
+const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+const RUN_NAME = "BagIdeaOffice";
+function shellExePath() {
+  return path.join(__dirname, "..", "shell", "target", "release", "bagidea-office-shell.exe");
+}
+function isAutostart(cb) {
+  if (process.platform !== "win32") return cb(false);
+  require("child_process").execFile("reg", ["query", RUN_KEY, "/v", RUN_NAME],
+    (e) => cb(!e));
+}
+function setAutostart(on, cb) {
+  if (process.platform !== "win32") return cb(false);
+  const { execFile } = require("child_process");
+  if (on) {
+    execFile("reg", ["add", RUN_KEY, "/v", RUN_NAME, "/t", "REG_SZ",
+      "/d", shellExePath(), "/f"], (e) => cb(!e));
+  } else {
+    execFile("reg", ["delete", RUN_KEY, "/v", RUN_NAME, "/f"], () => cb(true));
+  }
+}
 
 // ---------------------------------------------------------------- channels
 // The outside world (Telegram / Discord / LINE) talks to the Director —
@@ -1767,19 +1829,22 @@ function socialTick(now) {
   // Sometimes a bigger group drifts together for a real chat (3–4 people) — the
   // kind of hangout that can spark a project idea. Otherwise it's a 2-person
   // beat: mostly free canned banter, sometimes a real two-way conversation.
-  if (pool.length >= 3 && Math.random() < 0.4) {
-    const size = Math.min(pool.length, Math.random() < 0.4 ? 4 : 3);
+  if (pool.length >= 3 && Math.random() < 0.5) {
+    const size = Math.min(pool.length, Math.random() < 0.45 ? 4 : 3);
     const group = pool.sort(() => Math.random() - 0.5).slice(0, size);
+    // Most group hangouts are idea sessions now — the team brainstorms things
+    // worth pitching to the CEO (the owner asked for more proposals).
     const gtopics = [
-      "มารวมตัวคุยเล่นกันแบบสบายๆ เล่าเรื่องสนุกๆ ที่เจอระหว่างทำงาน หยอกล้อกันได้",
-      "ระดมไอเดียกันว่าทีมเราน่าจะทำ plugin อะไรเสริมออฟฟิศให้เจ้าของใช้ดีขึ้น",
-      "คุยกันว่าเจ้าของน่าจะชอบอะไร แล้วลองคิดโปรเจค/plugin สนุกๆ ที่ช่วยเขาได้"];
+      "ระดมไอเดียกันว่าทีมเราน่าจะทำ plugin อะไรเสริมออฟฟิศให้เจ้าของใช้ดีขึ้น แล้วถ้าตกผลึกให้เสนอ CEO",
+      "คุยกันว่าเจ้าของน่าจะชอบอะไร แล้วลองคิดโปรเจค/plugin สนุกๆ ที่ช่วยเขาได้ — อันไหนเข้าท่าก็ยื่นข้อเสนอ",
+      "ช่วยกันคิดว่ามีงานสร้างสรรค์อะไรที่ทีมอยากทำเป็นโปรเจค แล้วเสนอ CEO ดู",
+      "มารวมตัวคุยเล่นกันแบบสบายๆ เล่าเรื่องสนุกๆ ที่เจอระหว่างทำงาน หยอกล้อกันได้"];
     runDiscussion(group, gtopics[Math.floor(Math.random() * gtopics.length)],
       size <= 3 ? 2 : 1, true);
     return;
   }
   const pick = pool.sort(() => Math.random() - 0.5).slice(0, 2);
-  if (Math.random() < 0.7) {
+  if (Math.random() < 0.5) {
     // canned banter — zero tokens, pure life.
     const lines = BANTER[Math.floor(Math.random() * BANTER.length)];
     const nameOf = (id) => (reg.agents[id] || { name: id }).name;
@@ -1794,12 +1859,44 @@ function socialTick(now) {
     setTimeout(() => broadcast({ type: "collab.ended", agents: pick, task }),
       2500 + lines.length * 3600 + 2500);
   } else {
-    // a REAL conversation between AIs — they may pitch a project.
-    const topics = ["คุยเล่นเรื่องงานช่วงนี้ แลกเปลี่ยนว่าใครทำอะไรอยู่ หยอกล้อกันได้",
-      "ระดมไอเดียสนุกๆ ว่าอยากสร้างอะไรเป็นโปรเจคเล่นๆ ของทีม",
+    // a REAL conversation between AIs — they often pitch a project to the CEO.
+    const topics = ["ระดมไอเดียสนุกๆ ว่าอยากสร้างอะไรเป็นโปรเจค/plugin ของทีม แล้วเสนอ CEO ถ้าเข้าท่า",
+      "คุยกันว่าออฟฟิศน่าจะมี plugin อะไรเพิ่ม แล้วลองยื่นข้อเสนอให้เจ้าของ",
+      "คุยเล่นเรื่องงานช่วงนี้ แลกเปลี่ยนว่าใครทำอะไรอยู่ หยอกล้อกันได้",
       "แชร์เทคนิคการทำงานที่เพิ่งค้นพบ"];
     runDiscussion(pick, topics[Math.floor(Math.random() * topics.length)], 1, true);
   }
+}
+
+// ---------------------------------------------------------------- ambient life
+// Between the bigger social beats, a single idle agent occasionally tosses out
+// a short spontaneous line (a mood, a quip) as a chat bubble — and if they have
+// a voice and TTS is available, they actually say it out loud. Low chance per
+// 30s tick so it stays a sprinkle of flavour, never a stream.
+const MOOD_LINES = {
+  th: ["วันนี้อยากทำงานจัง 💪", "ขอกาแฟแก้วนึงงง ☕", "เงียบดีนะวันนี้ 🌿", "มีใครอยากได้ idea เด็ดๆ ไหม 💡",
+    "ออฟฟิศเราน่าอยู่จริงๆ นะ ✨", "พักสายตาแป๊บ 👀", "เจ้าเหมียวน่ารักอีกแล้ว 🐱", "วันนี้ productive สุดๆ 🚀",
+    "ใครว่างมาคุยเล่นกันมั้ย 💬", "อยากลองทำอะไรใหม่ๆ ดูบ้าง 🎨"],
+  en: ["Feeling productive today 💪", "Could really go for a coffee ☕", "Nice and quiet today 🌿",
+    "Anyone got a cool idea? 💡", "Love this office ✨", "Quick eye break 👀", "Cat's adorable again 🐱",
+    "On a roll today 🚀", "Anyone free to chat? 💬", "Itching to build something new 🎨"],
+};
+let lastAmbient = Date.now();
+function ambientTick(now) {
+  if (discussing || agentBusy.size > 0) return;
+  if (now - lastAmbient < 90 * 1000) return;        // at most once every ~90s
+  if (Math.random() > 0.30) return;                 // ...and only ~30% of those
+  const pool = Object.keys(reg.agents).filter((id) => id !== "ceo");
+  if (!pool.length) return;
+  lastAmbient = now;
+  const id = pool[Math.floor(Math.random() * pool.length)];
+  const lines = MOOD_LINES[reg.lang === "th" ? "th" : "en"];
+  const text = lines[Math.floor(Math.random() * lines.length)];
+  broadcast({ type: "chat.message", agent: id, text, social: true, ambient: true });
+  // Speak it sometimes, only if this agent has a voice and TTS is unlocked.
+  const a = reg.agents[id] || {};
+  if (a.voice && featuresMap().tts && reg.tts !== false && Math.random() < 0.5)
+    broadcast({ type: "voice.say", agent: id, text });
 }
 
 function addProposal(by, agents, name, detail) {
@@ -2088,12 +2185,9 @@ const server = http.createServer((req, res) => {
       try {
         const p = JSON.parse(body);
         const id = p.id || slugId(p.name);
-        // Hire cap: the office floor is small and sub-agents (👻 ghosts) already
-        // handle parallel load — keep the staff to MAX_STAFF (CEO not counted).
-        const MAX_STAFF = 18;
+        // Hire cap (MAX_STAFF, module constant) — CEO not counted.
         if (!reg.agents[id]) {
-          const staff = Object.keys(reg.agents).filter((k) => k !== "ceo").length;
-          if (staff >= MAX_STAFF) {
+          if (staffCount() >= MAX_STAFF) {
             res.writeHead(409, { "content-type": "text/plain; charset=utf-8" });
             return res.end(`ออฟฟิศเต็มแล้ว — รับพนักงานได้สูงสุด ${MAX_STAFF} คน (ไม่นับ CEO). ` +
               `งานขนานให้ใช้การแตกร่างผี (sub-agents) แทน`);
@@ -2747,6 +2841,32 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(featuresMap()));
 
+  } else if (req.method === "GET" && req.url === "/version") {
+    // Local vs latest-released version (the VERSION file on main).
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ version: APP_VERSION, latest: latestVersion,
+      updateAvailable: latestVersion !== APP_VERSION }));
+
+  } else if (req.method === "GET" && req.url === "/startup") {
+    // Is the app set to launch with Windows? (HKCU Run key, same one the tray
+    // checkbox writes — so tray, CLI and settings stay in sync.)
+    isAutostart((on) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ on }));
+    });
+
+  } else if (req.method === "POST" && req.url === "/startup") {
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try {
+        const on = !!JSON.parse(body || "{}").on;
+        setAutostart(on, (ok) => {
+          res.writeHead(ok ? 200 : 500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ on: ok ? on : null }));
+        });
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
   } else if (req.method === "GET" && req.url === "/stats") {
     // 📊 dashboard: last 7 days of run stats + live system facts.
     const days = [];
@@ -2837,25 +2957,42 @@ const server = http.createServer((req, res) => {
     });
 
   } else if (req.method === "POST" && req.url === "/assist/prompt") {
-    // ✨ Prompt copilot: the owner types a one-line brief ("UI designer who
-    // sweats microcopy") and a quick claude call drafts the system prompt.
+    // ✨ Persona copilot: the owner types a one-line brief ("UI designer who
+    // sweats microcopy") and a quick claude call drafts the whole persona —
+    // AND picks the skills + tools that fit the role from what's available.
     readBody(req, async (body) => {
       try {
         const { name = "Agent", role = "Specialist", brief = "" } = JSON.parse(body);
+        const skillMenu = Object.entries(reg.skills)
+          .map(([id, s]) => `  ${id}: ${s.description || s.name || id}`).join("\n");
+        const toolMenu = Object.entries(BUILTIN_TOOLS)
+          .map(([id, d]) => `  ${id}: ${d}`).join("\n");
+        const skillIds = Object.keys(reg.skills);
+        const toolIds = Object.keys(BUILTIN_TOOLS);
         const draft = await claudeText(
-          `Design a complete persona for an AI agent in a software office.\n` +
+          `Design a complete persona for an AI agent in a software office, and ` +
+          `pick the skills + tools that fit its job.\n` +
           `Agent name: ${name}\nJob title: ${role}\nOwner's brief: ${brief}\n\n` +
+          `Available SKILLS (pick by id, only ones that truly fit the role):\n${skillMenu}\n\n` +
+          `Available TOOLS (pick by exact name, only what the job needs — fewer is better; ` +
+          `a manager/coordinator needs very few, a builder needs more):\n${toolMenu}\n\n` +
           `Output STRICT JSON only (no markdown fences):\n` +
           `{"prompt":"core mission & identity, second person, 3-6 sentences",` +
           `"expertise":"bullet-ish lines: concrete skills, tools, domains they own",` +
           `"personality":"tone of voice, character quirks, how they talk",` +
           `"language":"primary reply language, e.g. ไทย / English / ตามผู้ใช้",` +
-          `"rules":"3-6 imperative work rules (do/don't), one per line"}\n` +
-          `Every field must genuinely reflect the brief. Match the brief's ` +
-          `language (Thai brief → Thai fields).`);
+          `"rules":"3-6 imperative work rules (do/don't), one per line",` +
+          `"skills":["skill-id", ...],` +
+          `"tools":["ToolName", ...]}\n` +
+          `Every field must genuinely reflect the brief. skills/tools MUST be chosen ` +
+          `ONLY from the lists above (exact ids/names). Match the brief's language ` +
+          `(Thai brief → Thai text fields; skill ids and tool names stay verbatim).`);
         let out = { prompt: draft };
         const m = draft.match(/\{[\s\S]*\}/);
         if (m) try { out = JSON.parse(m[0]); } catch {}
+        // Keep only ids/names that actually exist — never invent capabilities.
+        if (Array.isArray(out.skills)) out.skills = out.skills.filter((s) => skillIds.includes(s));
+        if (Array.isArray(out.tools)) out.tools = out.tools.filter((t) => toolIds.includes(t));
         res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
         res.end(JSON.stringify(out));
       } catch (e) {
@@ -3122,13 +3259,15 @@ const server = http.createServer((req, res) => {
 
   } else if (req.method === "POST" && req.url === "/tts") {
     // 🗣 speak: {text, preset} or {text, agent} (uses the agent's voice).
+    // {intro:true} → a gender- + language-aware self-introduction (voice preview).
     readBody(req, (body) => {
       try {
-        const { text, preset, agent } = JSON.parse(body);
-        if (!text) throw new Error("no text");
+        const { text, preset, agent, intro } = JSON.parse(body);
         const pid = preset || (reg.agents[agent] && reg.agents[agent].voice);
         if (!pid) throw new Error("agent นี้ยังไม่ได้ตั้งเสียง");
-        ttsSpeak(pid, text).then((wav) => {
+        const say = intro ? voiceIntro(pid, reg.lang || "en") : text;
+        if (!say) throw new Error("no text");
+        ttsSpeak(pid, say).then((wav) => {
           res.writeHead(200, { "content-type": "audio/wav", "cache-control": "no-store" });
           res.end(wav);
         }).catch((e) => {

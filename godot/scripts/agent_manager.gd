@@ -21,9 +21,9 @@ var _tv_watchers := 0
 var supervising := {}  # delegate id -> {ghost: Sprite3D or null} (main keeps tabs)
 var awaiting_delivery := {}  # delegate id -> true (walks the result to main)
 var desk_pool: Array[String] = ["desk1", "desk2", "desk3", "desk4", "desk5", "desk6"]
-# Idle agents spread across the cafeteria AND the recreation room (TV,
-# games, the ball corner, the garden) — the office feels lived-in.
-var seat_cycle: Array[String] = ["cafe_s1", "rec_s2", "cafe_s2", "rec_s1", "rec_s3", "rec_s4", "cafe_c"]
+# Idle agents spread EVENLY across the cafeteria AND the recreation room — the
+# cafe matters as much as the rec room, so the office never crowds one corner.
+var seat_cycle: Array[String] = ["cafe_s1", "rec_s1", "cafe_c", "rec_s2", "cafe_s2", "rec_s3", "cafe_s1", "rec_s4"]
 var meeting_cycle: Array[String] = ["m_s1", "m_s2", "m_s3", "m_s4"]
 var bed_pool: Array[String] = ["bed1", "bed2", "b3", "b4", "b5", "b6", "b7", "b8"]
 var ceo: Sprite3D
@@ -356,6 +356,9 @@ func handle(evt: Dictionary) -> void:
 				a.node.set_status("💬 " + text.left(28))
 				if a.state == "meeting":
 					world.whiteboard_add(id, text)
+				elif evt.get("ambient", false):
+					# A lone ambient mood line clears itself after a beat.
+					_clear_status_later(a, 6.0)
 		"collab.started":
 			# Agents physically gather at the meeting table (design doc 4.7).
 			if not theatrical:
@@ -825,7 +828,9 @@ func _ceo_loop() -> void:
 			return
 		if Time.get_ticks_msec() / 1000.0 < ceo_hold_until:
 			continue
-		if randf() < 0.65:
+		# The boss stays on the executive floor almost all the time, and only
+		# once in a while (~12%) wanders off to peek at another room.
+		if randf() < 0.88:
 			_walk(ceo, ["pace_a", "pace_b", "exec_c", "ceo_desk"].pick_random())
 		else:
 			_walk(ceo, ["lobby_c", "cafe_c", "rec_c", "ops_c", "meeting_c",
@@ -835,13 +840,37 @@ func _ceo_loop() -> void:
 ## rounds — recreation room, cafe, a look over the ops floor, server room.
 func _main_wander_loop() -> void:
 	var rounds: Array[String] = ["rec_c", "cafe_c", "ops_c", "lobby_c",
-		"server_c", "meeting_c", "rec_s2", "exec_c", "cafe_s1"]
+		"server_c", "meeting_c", "rec_s2", "cafe_s1", "dormx_c"]
 	while is_inside_tree():
-		await get_tree().create_timer(randf_range(12.0, 26.0)).timeout
+		await get_tree().create_timer(randf_range(11.0, 22.0)).timeout
 		if not agents.has("main"):
 			continue
 		var a: Dictionary = agents["main"]
-		if a.state == "idle" and is_instance_valid(a.node):
+		if a.state != "idle" or not is_instance_valid(a.node):
+			continue
+		# Shino roams the whole office, but he loves two things: dropping by the
+		# CEO, and hanging out with the staff. ~30% visit the boss, ~30% go play
+		# with an idle teammate, the rest is a general round of the rooms.
+		var r := randf()
+		if r < 0.30 and is_instance_valid(ceo):
+			_walk(a.node, ["exec_c", "ceo_desk", "pace_b"].pick_random())
+			a.node.set_status("แวะหา CEO 👑")
+			_clear_status_later(a, 5.0)
+		elif r < 0.60:
+			var mates: Array = []
+			for id in agents:
+				var m: Dictionary = agents[id]
+				if id != "main" and id != "ceo" and m.state == "idle" and is_instance_valid(m.node):
+					mates.append(m)
+			if mates.is_empty():
+				_walk(a.node, rounds.pick_random())
+			else:
+				var mate: Dictionary = mates.pick_random()
+				a.node.walk_to(world.path_between(a.node.position,
+					mate.node.position + Vector3(0.6, 0, 0.35)))
+				a.node.set_status("คุยกับทีม 💬")
+				_clear_status_later(a, 6.0)
+		else:
 			_walk(a.node, rounds.pick_random())
 
 # ---------------------------------------------------------------- supervision
@@ -1012,11 +1041,21 @@ func _idle_life_loop() -> void:
 		if pool.is_empty():
 			continue
 		var a: Dictionary = pool.pick_random()
-		match randi() % 4:
-			0: _act_tv(a)
-			1: _act_ball(a)
-			2: _act_pet(a)
-			3: _act_chat(a, pool)
+		# Weighted so the CAFE gets as much love as the REC room, with the odd
+		# wander to the server/meeting rooms (rare). Beds are handled by naps.
+		var r := randf()
+		if r < 0.18:
+			_act_tv(a)             # rec
+		elif r < 0.28:
+			_act_ball(a)           # rec
+		elif r < 0.38:
+			_act_pet(a)            # rec
+		elif r < 0.76:
+			_act_cafe(a)           # cafe — equal weight to the rec activities
+		elif r < 0.92:
+			_act_chat(a, pool)     # chat with a colleague (anywhere)
+		else:
+			_act_explore(a)        # a rare peek at the server / meeting room
 
 func _act_tv(a: Dictionary) -> void:
 	a.node.set_status("ดูทีวี 📺")
@@ -1082,6 +1121,26 @@ func _act_chat(a: Dictionary, pool: Array) -> void:
 		_maybe_focus(a.node, 0.55, 6.0)
 	_clear_status_later(a, 6.0)
 	_clear_status_later(b, 6.0)
+
+## Hang out in the cafeteria — given equal weight to the rec room so idle
+## agents don't all pile into one corner.
+func _act_cafe(a: Dictionary) -> void:
+	a.node.set_status("พักดื่มกาแฟ ☕")
+	var seat: String = ["cafe_s1", "cafe_s2", "cafe_c"].pick_random()
+	var d: float = a.node.walk_to(world.path_to(a.node.position, seat))
+	await get_tree().create_timer(d + randf_range(8.0, 16.0)).timeout
+	if a.state == "idle":
+		a.node.set_status("")
+
+## Once in a while an agent strolls off to the server room or the meeting room
+## for a change of scene — deliberately rare so those rooms stay special.
+func _act_explore(a: Dictionary) -> void:
+	var spot: String = "server_c" if randf() < 0.5 else "meeting_c"
+	a.node.set_status("เปลี่ยนบรรยากาศ 🚶")
+	var d: float = a.node.walk_to(world.path_to(a.node.position, spot))
+	await get_tree().create_timer(d + randf_range(6.0, 12.0)).timeout
+	if a.state == "idle":
+		a.node.set_status("")
 
 # ---------------------------------------------------------------- naps
 # No orders for 3 minutes → an agent may decide to take a bunk nap (beds

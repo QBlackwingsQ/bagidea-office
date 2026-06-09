@@ -76,7 +76,7 @@ const I18N = {
     d_back:"← Home",
     dn_intro:"Introduction", dn_what:"What it is", dn_concepts:"Core concepts",
     dn_install:"Installation", dn_install_win:"Windows (one-shot)", dn_install_manual:"Manual build", dn_install_first:"First run", dn_install_fix:"If it fails",
-    dn_using:"Using it", dn_chat:"Chat & the CEO", dn_projects:"Projects", dn_security:"Permissions", dn_editor:"3D Editor", dn_voice:"Voice & channels",
+    dn_using:"Using it", dn_chat:"Chat & the CEO", dn_projects:"Projects", dn_security:"Permissions", dn_editor:"3D Editor", dn_voice:"Voice & channels", dn_updates:"Updates & start-up",
     dn_features:"Features", dn_plugins:"Plugins & skills", dn_lang:"Languages",
     dn_cli:"CLI reference", dn_faq:"FAQ",
 
@@ -118,7 +118,8 @@ const I18N = {
     d_projects_h:"Projects", d_projects_p:"Register real folders as projects (with PLACE shorthands like \"classroom → D:\\Learning\"). The Director can create new projects himself and route work into them; the assignee's Claude session runs inside that directory and is resumable. One window per project — ▶ opens it, or shows a live view while an agent works.",
     d_security_h:"Permissions", d_security_p:"Tools you grant in an agent's profile run silently — and the agent never even leaves its desk. For anything else, the agent walks to the Security Center and waits while a card pops up with the exact command. Choose Allow, ✓✓ Forever (remembers the grant), or Deny. No answer in 50 seconds auto-denies and the agent re-plans.",
     d_editor_h:"The 3D Editor", d_editor_p:"Open the editor (the 🎨 button or bagidea editor) to rearrange the office in true 3D: click two rooms to swap them on the 3×3 grid, move the Ghost Deck, place furniture and decor, and import your own .glb/.gltf/.fbx models and images. Save and the wallpaper updates instantly — furniture, agent seats, navigation and pets all follow.",
-    d_voice_h:"Voice & channels", d_voice_p:"Hold F6 anywhere to speak a command to the office. Give agents one of 16 TTS voices (split clearly ♀/♂). Call the main agent for a realtime voice conversation (Gemini Live) in its assigned voice. Connect Telegram, Discord or LINE and command your office from your phone — replies come back on the same channel.",
+    d_voice_h:"Voice & channels", d_voice_p:"Hold F6 anywhere to speak a command to the office. Give agents one of 16 TTS voices (split clearly ♀/♂) — the ▶ preview introduces itself by the right gender and the office language. Voiced agents speak short lines on their own for flavour (long read-aloud only when you ask). Call the main agent for a realtime voice conversation (Gemini Live) in its assigned voice. Connect Telegram, Discord or LINE and command your office from your phone — replies come back on the same channel. Voice features need a Gemini key and switch off cleanly when one isn't set.",
+    d_updates_h:"Updates & start-up", d_updates_p:"A VERSION file marks real releases: the office only shows the 🔄 update banner when main's version is newer than yours, so routine commits never nag you. Click the banner or run bagidea update to pull, rebuild and relaunch (your data is kept). Set it to launch with Windows from the tray, settings, or bagidea startup on.",
 
     d_plugins_h:"Plugins, skills & tools",
     d_plugins_p:"Plugins extend the office for real — a folder with a manifest can add UI panels, HTTP routes, and commands agents can drive, with ctx access to the registry, feed, broadcasting and even running Claude turns. Two core plugins ship in the box (🎵 Music Player, 🧮 Calculator); install more from any GitHub repo. Start from the official template, or read the worked example repos.",
@@ -312,7 +313,7 @@ const I18N = {
     d_back:"← หน้าแรก",
     dn_intro:"แนะนำ", dn_what:"มันคืออะไร", dn_concepts:"แนวคิดหลัก",
     dn_install:"การติดตั้ง", dn_install_win:"Windows (คำสั่งเดียว)", dn_install_manual:"ติดตั้งเอง", dn_install_first:"เปิดครั้งแรก", dn_install_fix:"ถ้าติดตั้งไม่ผ่าน",
-    dn_using:"การใช้งาน", dn_chat:"แชท & CEO", dn_projects:"โปรเจค", dn_security:"สิทธิ์การใช้เครื่องมือ", dn_editor:"3D Editor", dn_voice:"เสียง & ช่องทาง",
+    dn_using:"การใช้งาน", dn_chat:"แชท & CEO", dn_projects:"โปรเจค", dn_security:"สิทธิ์การใช้เครื่องมือ", dn_editor:"3D Editor", dn_voice:"เสียง & ช่องทาง", dn_updates:"อัปเดต & เปิดพร้อม Windows",
     dn_features:"ฟีเจอร์", dn_plugins:"Plugin & สกิล", dn_lang:"ภาษา",
     dn_cli:"คำสั่ง CLI", dn_faq:"คำถามที่พบบ่อย",
 
@@ -354,7 +355,8 @@ const I18N = {
     d_projects_h:"โปรเจค", d_projects_p:"ลงทะเบียนโฟลเดอร์จริงเป็นโปรเจค (ตั้งชื่อย่อ PLACE ได้ เช่น \"ห้องเรียน → D:\\Learning\") Director สร้างโปรเจคใหม่และจัดงานเข้าไปเองได้ session ของผู้รับงานรันอยู่ในโฟลเดอร์นั้นและกลับมาต่อได้ หนึ่งหน้าต่างต่อโปรเจค — ▶ เปิด หรือดูงานสดขณะ agent ทำงาน",
     d_security_h:"สิทธิ์การใช้เครื่องมือ", d_security_p:"เครื่องมือที่คุณอนุญาตในโปรไฟล์ agent ทำงานเงียบ ๆ — และ agent ไม่ต้องลุกจากโต๊ะด้วย ส่วนอย่างอื่น agent จะเดินไปห้องขอสิทธิ์และรอ พร้อมการ์ดที่โชว์คำสั่งเป๊ะ ๆ เลือก อนุญาต, ✓✓ ตลอดไป (จดจำ), หรือ ปฏิเสธ ไม่ตอบใน 50 วินาทีจะปฏิเสธอัตโนมัติและ agent วางแผนใหม่",
     d_editor_h:"3D Editor", d_editor_p:"เปิด editor (ปุ่ม 🎨 หรือ bagidea editor) เพื่อจัดผังออฟฟิศแบบ 3 มิติจริง: คลิกสองห้องเพื่อสลับในกริด 3×3, ย้าย Ghost Deck, วางเฟอร์นิเจอร์/ของตกแต่ง และ import โมเดล .glb/.gltf/.fbx กับรูปของคุณเอง กดบันทึกแล้ววอลเปเปอร์อัปเดตทันที — เฟอร์นิเจอร์ จุดนั่ง เส้นทางเดิน และสัตว์เลี้ยงตามไปหมด",
-    d_voice_h:"เสียง & ช่องทาง", d_voice_p:"กด F6 ค้างจากที่ไหนก็ได้เพื่อพูดสั่งงาน ตั้งเสียงให้ agent ได้ 16 แบบ (แยก ♀/♂ ชัดเจน) โทรหา main agent เพื่อคุยด้วยเสียงเรียลไทม์ (Gemini Live) ด้วยเสียงที่ตั้งไว้ เชื่อม Telegram, Discord, LINE แล้วสั่งงานจากมือถือ — คำตอบกลับมาช่องเดิม",
+    d_voice_h:"เสียง & ช่องทาง", d_voice_p:"กด F6 ค้างจากที่ไหนก็ได้เพื่อพูดสั่งงาน ตั้งเสียงให้ agent ได้ 16 แบบ (แยก ♀/♂ ชัดเจน) — ปุ่มฟัง ▶ จะแนะนำตัวตรงเพศและภาษาของออฟฟิศ agent ที่มีเสียงจะพูดสั้นๆ เองเป็นสีสัน (อ่านยาวเฉพาะตอนสั่ง) โทรหา main agent เพื่อคุยด้วยเสียงเรียลไทม์ (Gemini Live) ด้วยเสียงที่ตั้งไว้ เชื่อม Telegram, Discord, LINE แล้วสั่งงานจากมือถือ — คำตอบกลับมาช่องเดิม ฟีเจอร์เสียงต้องมี Gemini key และจะปิดเองถ้ายังไม่ใส่",
+    d_updates_h:"อัปเดต & เปิดพร้อม Windows", d_updates_p:"ไฟล์ VERSION บอกว่าเป็นเวอร์ชันใหม่จริง — แถบ 🔄 จะเด้งเฉพาะตอน VERSION บน main ใหม่กว่าของคุณ การแก้เล็กน้อยจึงไม่รบกวน คลิกแถบหรือ bagidea update เพื่อดึงโค้ด คอมไพล์ แล้วเปิดใหม่ (ข้อมูลไม่หาย) ตั้งให้เปิดพร้อม Windows ได้จาก tray, settings หรือ bagidea startup on",
 
     d_plugins_h:"Plugin สกิล และเครื่องมือ",
     d_plugins_p:"Plugin ต่อยอดออฟฟิศได้จริง — โฟลเดอร์ที่มี manifest เพิ่มแผง UI, HTTP route, และคำสั่งที่ agent ใช้ได้ พร้อม ctx เข้าถึง registry, feed, broadcast และแม้แต่รัน Claude ได้ มี plugin หลัก 2 ตัวมาในกล่อง (🎵 Music Player, 🧮 Calculator) ติดตั้งเพิ่มจาก GitHub repo ใดก็ได้ เริ่มจากเทมเพลตทางการ หรืออ่าน repo ตัวอย่าง",

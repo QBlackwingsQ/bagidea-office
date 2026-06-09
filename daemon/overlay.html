@@ -998,7 +998,7 @@
   let ROSTER = {}, REGROLES = [], REGSKILLS = {}, REGTOOLS = [], AUTOSKILLS = true;
   let BUILTIN_DESC = {}, REGMCP = {}, SOUND = true, HEARTBEAT = 0;
   let FEATURES = { openai: false, gemini: false, stt: false, tts: false, live: false, image: false };
-  let TTSON = true, SOCIALMIN = 60;
+  let TTSON = true, SOCIALMIN = 60, MAXSTAFF = 18;
   let PROJECTS_CACHE = [];
   function npcOf(id) {
     if (ROSTER[id] && ROSTER[id].avatar) return ROSTER[id].avatar;
@@ -1990,6 +1990,8 @@
           <div class="knob"><\/div> 🔊 Sound effects — เสียงประกอบในโลก office</div>
         <div class="switch ${TTSON ? "on" : ""}" id="ttsSw" style="margin-top:6px">
           <div class="knob"></div> 🗣 Agent voices — เสียงพูดของ agents (ต้องมี Gemini key)</div>
+        <div class="switch" id="startupSw" style="margin-top:6px">
+          <div class="knob"></div> 🪟 Start with Windows — เปิดออฟฟิศอัตโนมัติเมื่อเปิดเครื่อง</div>
         <div class="field" style="margin-top:8px"><label>💓 DIRECTOR HEARTBEAT — รอบตรวจภาพรวม/ตารางงาน (แจ้งเฉพาะที่ควรรู้)</label>
           <select id="hbSel">
             <option value="0">ปิด</option>
@@ -2015,7 +2017,9 @@
             <option value="none">ปิดคีย์ลัด</option>
           </select></div>
         <input id="aFilter" class="filterbox" placeholder="🔍 ค้นหา agent…">
-        <div id="alist" class="biglist"></div><button class="bigbtn" id="newAgent">＋ Hire a new agent</button>`;
+        <div id="alist" class="biglist"></div>
+        <div id="staffCount" class="hint" style="text-align:center;margin:4px 0 6px;opacity:.75"></div>
+        <button class="bigbtn" id="newAgent">＋ Hire a new agent</button>`;
     } else if (tab === "skills") {
       bodyHtml = `<div class="switch ${AUTOSKILLS ? "on" : ""}" id="autoSw">
           <div class="knob"></div> Auto-learn: agents distill finished work into new skills</div>
@@ -2088,7 +2092,29 @@
         row.onclick = () => openEditor(id);
         list.appendChild(row);
       }
-      modalCard.querySelector("#newAgent").onclick = () => openEditor(null);
+      // Roster size vs the hire cap (e.g. "6 / 18 agents").
+      const nStaff = Object.keys(ROSTER).filter((x) => x !== "ceo").length;
+      const scEl = modalCard.querySelector("#staffCount");
+      if (scEl) scEl.textContent = `${nStaff} / ${MAXSTAFF} agents`;
+      const hireBtn = modalCard.querySelector("#newAgent");
+      hireBtn.onclick = () => {
+        if (nStaff >= MAXSTAFF) return addChip(`ออฟฟิศเต็มแล้ว — สูงสุด ${MAXSTAFF} คน (ใช้การแตกร่างผีสำหรับงานขนาน)`);
+        openEditor(null);
+      };
+      if (nStaff >= MAXSTAFF) { hireBtn.classList.add("nokey"); hireBtn.textContent = `ออฟฟิศเต็ม (${nStaff}/${MAXSTAFF})`; }
+      // 🪟 Start with Windows — reflects the live HKCU Run key (tray-synced).
+      const startupSw = modalCard.querySelector("#startupSw");
+      if (startupSw) {
+        fetch("/startup").then((r) => r.json()).then((s) => startupSw.classList.toggle("on", !!s.on)).catch(() => {});
+        startupSw.onclick = async (e) => {
+          const on = !e.currentTarget.classList.contains("on");
+          try {
+            const r = await api("/startup", { on });
+            e.currentTarget.classList.toggle("on", !!r.on);
+            addChip(on ? "🪟 จะเปิดออฟฟิศอัตโนมัติเมื่อเปิดเครื่อง" : "ปิดการเปิดอัตโนมัติแล้ว");
+          } catch { addChip("✗ ตั้งค่าไม่สำเร็จ"); }
+        };
+      }
       modalCard.querySelector("#sndSw").onclick = async (e) => {
         SOUND = !SOUND;
         await api("/registry/sound", { enabled: SOUND });
@@ -2373,19 +2399,21 @@
         const btn = e.currentTarget;
         btn.textContent = "⏳";
         try {
+          // intro:true → the daemon speaks a gender- + language-aware line
+          // (male voices introduce as male, female as female; office language).
           const r = await fetch("/tts", { method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ preset: pid,
-              text: "สวัสดีค่ะ ฉันคือเสียงใหม่ของ agent ในออฟฟิศนะคะ ฝากตัวด้วยนะ!" }) });
+            body: JSON.stringify({ preset: pid, intro: true }) });
           if (!r.ok) throw new Error(await r.text());
           new Audio(URL.createObjectURL(await r.blob())).play();
         } catch (err) { addChip("✗ " + String(err.message).slice(0, 80)); }
         btn.textContent = "▶";
       };
     }
-    // skill / tool assignment chips
+    // skill / tool assignment chips (re-rendered when the copilot picks some)
     const skBox = modalCard.querySelector("#eSkills");
-    if (skBox) {
+    function renderSkillChips() {
+      if (!skBox) return;
       const ids = Object.keys(REGSKILLS);
       skBox.innerHTML = ids.length ? "" : `<span style="font-size:11px;color:var(--dim)">no skills in the library yet</span>`;
       for (const sid of ids) {
@@ -2398,7 +2426,9 @@
       }
     }
     const tlBox = modalCard.querySelector("#eTools");
-    if (tlBox) {
+    function renderToolChips() {
+      if (!tlBox) return;
+      tlBox.innerHTML = "";
       const addToolChip = (val, label, tip) => {
         const c = document.createElement("div");
         c.className = "chk" + (myTools.has(val) ? " on" : "");
@@ -2410,6 +2440,8 @@
       for (const t of REGTOOLS) addToolChip(t, t, BUILTIN_DESC[t]);
       for (const n of Object.keys(REGMCP)) addToolChip("mcp:" + n, "🔌 " + n, REGMCP[n].command);
     }
+    renderSkillChips();
+    renderToolChips();
     // avatar grid: the 12 NPC faces
     const grid = modalCard.querySelector("#avGrid");
     for (let n = 1; n <= 12; n++) {
@@ -2455,6 +2487,13 @@
           if (r.personality) modalCard.querySelector("#ePersonality").value = r.personality;
           if (r.language) modalCard.querySelector("#eLanguage").value = r.language;
           if (r.rules) modalCard.querySelector("#eRules").value = r.rules;
+          // ...and the skills + tools it chose for the role (validated server-side).
+          if (Array.isArray(r.skills)) {
+            mySkills.clear(); r.skills.forEach((s) => mySkills.add(s)); renderSkillChips();
+          }
+          if (Array.isArray(r.tools)) {
+            myTools.clear(); r.tools.forEach((t) => myTools.add(t)); renderToolChips();
+          }
         } finally { btn.disabled = false; btn.textContent = "✨ Draft"; }
       };
     }
@@ -3605,6 +3644,7 @@
       if (ev.features) FEATURES = ev.features;
       TTSON = ev.tts !== false;
       SOCIALMIN = Number(ev.socialMin !== undefined ? ev.socialMin : 60);
+      MAXSTAFF = Number(ev.maxStaff || 18);
       // Machine default language (registry) applies only when the user hasn't
       // pinned one in this webview. Reload once so the UI re-renders in it.
       try {
@@ -3656,13 +3696,14 @@
     }
     if (ev.type === "update.available") {
       const bar = document.getElementById("updBar");
-      document.getElementById("updSha").textContent = ev.sha || "";
+      const ver = ev.version || ev.sha || "";
+      document.getElementById("updSha").textContent = ver ? "v" + ver : "";
       bar.classList.add("on");
       bar.onclick = async () => {
         bar.textContent = "⏳ กำลังอัปเดต… โปรแกรมจะปิดและเปิดใหม่เอง";
         await api("/update", {});
       };
-      addFeed("main", "🔄 มีเวอร์ชันใหม่ " + (ev.sha || "") + " — อัปเดตได้จากแถบในหน้าแชท หรือ `bagidea update`", "");
+      addFeed("main", "🔄 มีเวอร์ชันใหม่ " + (ver ? "v" + ver : "") + " — อัปเดตได้จากแถบในหน้าแชท หรือ `bagidea update`", "");
       return;
     }
     if (ev.type === "ui.daylight") { dayMode = ev.hour; return; }

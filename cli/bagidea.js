@@ -82,6 +82,7 @@ function help() {
   row("status", "System overview · agents · projects");
   row("stats", "7-day activity + cost report");
   row("update", "Update to the latest version + restart");
+  row("startup [on|off]", "Launch the office automatically with Windows");
 
   head("Talk to the office");
   row('ask "<msg>"', "Order as the CEO and wait for the answer");
@@ -134,12 +135,40 @@ async function main() {
   if (!cmd || ["help", "--help", "-h"].includes(cmd)) return help();
 
   if (["version", "--version", "-v"].includes(cmd)) {
+    let ver = "0.0.0";
+    try { ver = fs.readFileSync(path.join(ROOT, "VERSION"), "utf8").trim(); } catch {}
+    let build = "";
     try {
       const sha = execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: ROOT }).toString().trim();
       const date = execFileSync("git", ["log", "-1", "--format=%cd", "--date=short"], { cwd: ROOT }).toString().trim();
-      console.log(`  ${c.brand}${c.bold}BAG IDEA Office${c.reset} ${c.accent}${sha}${c.reset} ${c.gray}(${date})${c.reset}`);
-    } catch { console.log("  BAG IDEA Office (git not available)"); }
+      build = ` ${c.gray}(build ${sha} · ${date})${c.reset}`;
+    } catch {}
+    console.log(`  ${c.brand}${c.bold}BAG IDEA Office${c.reset} ${c.accent}v${ver}${c.reset}${build}`);
+    // If the office is running, it knows the latest released version too.
+    if (await daemonUp()) {
+      try {
+        const v = await req("GET", "/version");
+        if (v && v.updateAvailable)
+          warn(`A new version is available: ${c.accent}v${v.latest}${c.reset} — run ${c.accent}bagidea update${c.reset}`);
+        else if (v && v.latest) ok("You're on the latest version");
+      } catch {}
+    }
     return;
+  }
+
+  if (cmd === "startup") {
+    // Launch-with-Windows toggle (same HKCU Run key the tray uses).
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const arg = (rest[0] || "").toLowerCase();
+    if (!arg) {
+      const s = await req("GET", "/startup");
+      return info(`Start with Windows is ${s && s.on ? c.ok + "ON" : c.gray + "OFF"}${c.reset}` +
+        ` ${c.gray}— bagidea startup on|off${c.reset}`);
+    }
+    if (!["on", "off"].includes(arg)) return bad("usage: bagidea startup on|off");
+    const r = await req("POST", "/startup", { on: arg === "on" });
+    return r && r.on ? ok("The office will launch with Windows")
+      : ok("Auto-start disabled");
   }
 
   // --- process control shared by start / stop / restart -----------------------

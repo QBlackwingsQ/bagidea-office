@@ -75,10 +75,12 @@ Not a dashboard. Not a chat window. A **world** that renders the true state of y
 - **Hermes-style memory** (token-lean): shared `workspace/OFFICE.md` + per-agent `workspace/memory/<id>.md`, distilled automatically after real work; fresh sessions get pointers + a short tail, full recall on demand
 - **Main API keys + feature gates**: `OPENAI_API_KEY` / `GEMINI_API_KEY` are first-class — voice/TTS/image/realtime grey out with guidance until set; an extra-key vault feeds agents' own env
 - **Attachments & media**: paperclip / drag-drop upload; chat renders images, video, audio inline; agents produce images via the `/gen/image` **system tool** and they appear automatically
-- **Social office**: idle agents drift together — sometimes in **groups of 3–4** — for free canned banter or real AI-to-AI chats, and a good conversation can crystallize into a **project proposal**. Pitches are steered toward standalone projects or **office plugins** (never editing the core program); you approve or reject each one with an **optional note to the team**, and approved work scaffolds into a default `projects/` folder
+- **Social office**: idle agents spread evenly across the cafe and rec room (with the occasional stroll to the server/meeting rooms and the odd bunk nap), and drift together — sometimes in **groups of 3–4** — for banter or real AI-to-AI chats that now lean toward **brainstorming ideas worth pitching**. A good conversation crystallizes into a **project proposal** to the CEO (more often than before). Pitches are steered toward standalone projects or **office plugins** (never editing the core program); you approve or reject each one with an **optional note to the team**, and approved work scaffolds into a default `projects/` folder
+- **Ambient life**: agents with a voice occasionally toss out a short spoken mood line ("feeling productive today 💪") as a flavour beat — speech bubbles for everyone, real TTS for the voiced
+- **🗣 16 agent voices** (♀8 · ♂8): assign one per agent; the **▶ preview introduces itself by the right gender and the office language** (no more everyone saying a female hello). Voiced agents speak short lines on their own; long read-aloud only when you ask
 - **📞 Calls**: the **main agent only** is callable (realtime Gemini Live voice) — it speaks in the voice you assigned it, or a sensible default preset
 - **📊 Dashboard** (OFFICE OPS → STATS): runs / cost / 7-day chart / busiest agents / uptime / channels / key status
-- **`bagidea` CLI**: `start`/`stop`/`restart`, `ask`/`chat`, `status`, `stats`, `agents`, `projects`, `proposals` + `proposal approve|reject <id> [note]`, `plugins` + `plugin install|remove`, `lang`, `say`/`voices`/`image`, `channels`, `keys`, `update`, and more (`bagidea --help`)
+- **`bagidea` CLI**: `start`/`stop`/`restart`, `startup on|off`, `ask`/`chat`, `status`, `stats`, `agents`, `projects`, `proposals` + `proposal approve|reject <id> [note]`, `plugins` + `plugin install|remove`, `lang`, `say`/`voices`/`image`, `channels`, `keys`, `update`, `version`, and more (`bagidea --help`)
 - **Living chat head**: a drifting gradient ring that spins amber while agents work
 
 ### 🔌 Event daemon (Layer 0 — Node.js, zero dependencies)
@@ -101,7 +103,8 @@ Not a dashboard. Not a chat window. A **world** that renders the true state of y
 - **📁 Projects**: register real folders as projects (with PLACE shorthands like `"ห้องเรียน" → D:\Learning`); the Director creates new ones himself via a `PROJECT:` protocol line and routes work with `DELEGATE: <agent> @ <project> :: <job>` — the assignee's claude session lives **inside** that directory and is resumable by you. One window per project: ▶ opens (or surfaces) *the* window; pressed while an agent works it opens a **live view** of their session that hands control to you the moment they finish. Disk-deletes sweep leftover dev servers first
 - **📨 Channels**: Telegram (long-poll), Discord (native gateway client) and LINE (webhook) feed straight into the Director — order your office from your phone, the reply comes back on the same channel
 - **🔑 API key vault**: store `OPENAI_API_KEY` & friends once; they're injected into every agent run's environment, and agents are told which names exist
-- **🔄 Self-updating**: the daemon compares local HEAD with GitHub `main`; an in-app banner (or `bagidea update`) pulls, rebuilds what changed, and relaunches
+- **🔄 Self-updating (version-gated)**: a `VERSION` file marks releases. The daemon compares the local `VERSION` with the one on `main` and only raises the in-app banner on a real version bump — routine commits and dev-branch work never nag users. The banner (or `bagidea update`) pulls, rebuilds what changed, and relaunches. `bagidea version` shows the current build and whether an update is out (release flow: [`RELEASING.md`](RELEASING.md))
+- **🪟 Start with Windows**: launch the office on boot — toggle it from the tray, settings (⚙ → AGENTS), or `bagidea startup on|off` (all share one HKCU Run key)
 
 ### 🛡️ Spatialized security
 When an agent needs a tool you have **not** granted:
@@ -403,7 +406,9 @@ bagidea say "<text>" | voices     speak via TTS / list voice presets
 bagidea image "<prompt>"          generate an image into the office
 bagidea channels | keys           channel + API-key status
 bagidea feed                      live office event stream in your terminal
+bagidea startup [on|off]          launch the office with Windows (show/set)
 bagidea update                    update to the latest version + relaunch
+bagidea version                   current build + whether an update is out
 bagidea --help | --version        full command list / current build
 ```
 
@@ -417,7 +422,7 @@ Full reference: [`docs/guide/cli.md`](docs/guide/cli.md).
 | `GET /sessions?agent=` · `GET /sessions/log?agent=&key=` · `POST /sessions/delete` | threads |
 | `GET /registry` · `POST /registry/agent` · `POST /registry/agent/delete` | staff CRUD |
 | `POST /registry/role` · `/registry/skill` · `/registry/mcp` · `/registry/autoskills` | libraries |
-| `POST /assist/prompt` `{name, role, brief}` | ✨ persona copilot (fills every field) |
+| `POST /assist/prompt` `{name, role, brief}` | ✨ persona copilot (fills every field + picks fitting skills/tools) |
 | `GET/POST /jobs` · `POST /jobs/update` | standing work orders (now / at / every) |
 | `GET/POST /notes` | shared note board (mirrors `workspace/notes.md`) |
 | `GET/POST /calendar` | appointments + Director reminders |
@@ -436,6 +441,8 @@ Full reference: [`docs/guide/cli.md`](docs/guide/cli.md).
 | `POST /channels/line/webhook` | LINE Messaging API webhook target |
 | `POST /chat` with `wait: true` | hold the response until the run finishes (the CLI's `ask`) |
 | `POST /update` | run the updater (human-UI-only) |
+| `GET /version` | local + latest-released version + updateAvailable |
+| `GET/POST /startup` | read / toggle launch-with-Windows (HKCU Run key) |
 | `POST /voice/transcribe` (WAV body) | speech → text (Whisper / Gemini) |
 | `POST /tts` `{text, preset\|agent}` · `GET /tts/presets` | agent text-to-speech |
 | `WS /live?agent=` | realtime voice relay to Gemini Live |
@@ -470,7 +477,7 @@ One JSON event per WebSocket message / journal line: `{type, agent, task?, tool?
 | `ceo.report` | the Director walks the final summary to the boss 📨 |
 | `channel.message` | a message arrived from Telegram/Discord/LINE 📨 |
 | `projects.changed` | project list/status flipped (live UI refresh) |
-| `update.available` | GitHub main is ahead — the 🔄 banner appears |
+| `update.available` | main's `VERSION` is newer than local — the 🔄 banner appears |
 | `ui.daylight` | atmosphere override |
 
 Push your own events from anything: `POST /event` — that's the whole integration

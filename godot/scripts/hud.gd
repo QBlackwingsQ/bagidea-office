@@ -19,6 +19,9 @@ var _fx_list: Array = []  # {s: Sprite2D, agent, frames, loops, t}
 var _wb_panel: PanelContainer
 var _wb_box: VBoxContainer
 var _wb_lines: Array[String] = []
+# World position the whiteboard floats at — resolved from the LIVE meeting-room
+# anchor (rooms can be swapped/moved in the editor), not a hard-coded spot.
+var _wb_world_pos: Vector3 = Vector3(13, 2.4, -0.5)
 
 func _ready() -> void:
 	layer = 2
@@ -294,6 +297,10 @@ func wb_reset(header: String) -> void:
 	_wb_lines.clear()
 	if header != "":
 		_wb_lines.append(header)
+	# Re-anchor to wherever the meeting room currently sits on the grid.
+	var w := get_node_or_null("../World")
+	if w and "WP" in w and w.WP.has("meeting_c"):
+		_wb_world_pos = w.WP["meeting_c"] + Vector3(0, 1.6, 0)
 	_wb_refresh()
 
 func wb_add(line: String) -> void:
@@ -358,5 +365,5 @@ func _process(_delta: float) -> void:
 	_track_fx(_delta, cam)
 
 	if _wb_panel.visible:
-		var sp2 := cam.unproject_position(Vector3(13, 2.4, -0.5))
+		var sp2 := cam.unproject_position(_wb_world_pos)
 		_wb_panel.position = sp2 - Vector2(_wb_panel.size.x * 0.5, _wb_panel.size.y)
