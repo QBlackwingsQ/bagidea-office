@@ -15,7 +15,9 @@
   bagidea status                ภาพรวมระบบ + agents + โปรเจค + keys
   bagidea stats                 📊 สถิติงาน 7 วัน + ค่าใช้จ่าย + กราฟ
   bagidea update                อัปเดต + รีสตาร์ท
-  bagidea --version             commit ปัจจุบัน
+  bagidea version               เวอร์ชันปัจจุบัน + บอกถ้ามีอัปเดต
+  bagidea startup [on|off]      เปิดออฟฟิศพร้อม Windows (ดู/ตั้งค่า)
+  bagidea uninstall [--keep-data]  ถอนการติดตั้ง (PATH, shortcut, autostart, ไฟล์)
   bagidea --help                หน้านี้
 
 คุยกับออฟฟิศ

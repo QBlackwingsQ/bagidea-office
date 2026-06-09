@@ -65,3 +65,18 @@ irm https://raw.githubusercontent.com/bagidea/bagidea-office/main/installer/inst
 
 **หลังติดตั้งครั้งแรก:** เปิดเทอร์มินัลใหม่ → `claude` (login บัญชี Claude
 ครั้งเดียว) → `bagidea start` 🎉
+
+## ถอนการติดตั้ง
+
+```powershell
+bagidea uninstall              # ถอนทั้งหมด (ยืนยันก่อน)
+bagidea uninstall --keep-data  # สำรองข้อมูล (agents/projects/keys) ไว้ก่อนลบ
+```
+
+ลบเฉพาะของ BagIdea Office เอง: หยุดโปรแกรม, เอา `bagidea` ออกจาก PATH,
+ลบ Start Menu shortcut, ปิด start-with-Windows, และลบโฟลเดอร์
+`%LOCALAPPDATA%\BagIdeaOffice` — **ไม่ยุ่ง** Git / Node / Rust / Claude
+(เครื่องมือที่ใช้ร่วมกับโปรแกรมอื่น ถ้าอยากลบค่อยใช้ winget เอง).
+`--keep-data` จะสำรอง `registry/sessions/projects/...` + `workspace` ไปไว้ที่
+`%USERPROFILE%\BagIdeaOffice-data-backup` ก่อน เผื่ออยากติดตั้งใหม่ภายหลัง
+(เปิดเทอร์มินัลใหม่หลังถอนเพื่อให้ PATH อัปเดต)

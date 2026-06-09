@@ -83,6 +83,7 @@ function help() {
   row("stats", "7-day activity + cost report");
   row("update", "Update to the latest version + restart");
   row("startup [on|off]", "Launch the office automatically with Windows");
+  row("uninstall [--keep-data]", "Remove the app (PATH, shortcut, autostart, files)");
 
   head("Talk to the office");
   row('ask "<msg>"', "Order as the CEO and wait for the answer");
@@ -230,6 +231,33 @@ async function main() {
     info("Updating… (the app will restart itself)");
     spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps],
       { cwd: ROOT, detached: true, stdio: "inherit" });
+    return;
+  }
+
+  if (cmd === "uninstall") {
+    const ps = path.join(ROOT, "installer", "uninstall.ps1");
+    if (!fs.existsSync(ps)) return bad("installer/uninstall.ps1 not found");
+    const keepData = rest.includes("--keep-data");
+    const psArgs = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps];
+    if (keepData) psArgs.push("-KeepData");
+    const go = () => {
+      info("Uninstalling… a new window finishes up (this terminal can close).");
+      // Detached + cwd outside the app folder so the script can delete it once
+      // we exit. We pass through OUR exit; the .ps1 waits a beat then removes.
+      spawn("powershell", psArgs,
+        { cwd: require("os").homedir(), detached: true, stdio: "ignore", windowsHide: false }).unref();
+      process.exit(0);
+    };
+    if (rest.includes("-y") || rest.includes("--yes")) return go();
+    warn(`This removes BagIdea Office — app files, PATH entry, Start Menu shortcut, autostart`
+      + (keepData ? " (your data is backed up first)." : ", AND your data (agents, projects, keys)."));
+    info("It does NOT remove Git / Node / Rust / Claude (shared tools).");
+    const rl = require("readline").createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(`  ${c.warn}Type 'yes' to uninstall:${c.reset} `, (ans) => {
+      rl.close();
+      if (String(ans).trim().toLowerCase() === "yes") go();
+      else info("Cancelled — nothing was removed.");
+    });
     return;
   }
 

@@ -1,9 +1,31 @@
 # BagIdea Office
 
-> **A living AI Agent Office Simulation that runs as your desktop wallpaper.**
-> Every AI agent on your machine becomes a character in an HD-2D office — they walk to their desks when real work starts, gather at Security to ask for permission, hold meetings, learn skills, and the lights follow your real local time.
+> **A living, 2.5D Claude Office that runs as your desktop wallpaper** — a team
+> of AI agents with real presence that work, learn and grow alongside you.
+> Every agent walks to its desk when real work starts, asks permission at the
+> Security desk, holds meetings, learns new skills, and the lights follow your
+> real local time.
 
-Not a dashboard. Not a chat window. A **world** that renders the true state of your AI agents — Claude Code sessions, headless agent runs, custom scripts — as living pixel-art employees, behind your desktop icons.
+Not a dashboard. Not a chat window. A **world** that renders the true state of
+your Claude agents — Claude Code sessions, headless runs, custom scripts — as
+living pixel-art employees behind your desktop icons, and gives them a **society**.
+Build a big enough team and they grow their own AI social life: they chat, play,
+learn how to work together, and learn about *you*. Many of their meetings happen
+**without you asking** — small talk that can turn serious enough to start a
+project, complete with a written **proposal** they bring to you to **approve or
+reject (with your reasons)**. They learn and grow from how you use them — many
+times their ideas feel like they really do have a soul.
+
+**Where it comes from:** BagIdea Office takes inspiration from **openclaw** (the
+agent-office idea) and **Hermes** (agents that learn skills on their own) — folds
+in most of what those two do, then goes further: with your permission the agents
+**actually create and finish real projects**, and even **propose and write their
+own plugins** (you approve each one) that extend the office for real.
+
+**To run it you need [Claude Code](https://claude.com/claude-code).** For the
+*full* experience, add your **Gemini + OpenAI** API keys in settings — that
+unlocks agent voices, voice commands, realtime calls and image generation, and
+the office truly comes alive.
 
 🌐 **Website:** the landing page + browsable docs live in [`web/`](web/) (deployable to any static host).
 
@@ -417,6 +439,7 @@ bagidea feed                      live office event stream in your terminal
 bagidea startup [on|off]          launch the office with Windows (show/set)
 bagidea update                    update to the latest version + relaunch
 bagidea version                   current build + whether an update is out
+bagidea uninstall [--keep-data]   remove the app (PATH, shortcut, autostart, files)
 bagidea --help | --version        full command list / current build
 ```
 
