@@ -54,26 +54,29 @@ if (-not (Have "winget")) {
   Warn "Store link: https://apps.microsoft.com/detail/9nblggh4nns1"
   exit 1
 }
-function Winget($id) {
-  winget install --id $id -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
+# NOTE: do NOT name this "Winget" — PowerShell command names are case-insensitive,
+# so a function "Winget" shadows winget.exe and `winget install` inside it would
+# call the function again forever (CallDepthOverflow). Call the .exe explicitly.
+function WingetInstall($id) {
+  winget.exe install --id $id -e --silent --accept-package-agreements --accept-source-agreements | Out-Null
   Sync-Path
 }
 
 # ---- dependencies ------------------------------------------------------------
 Step 1 "Git"
 if (Have "git") { Skip "already installed ($((git --version)))" }
-else { Winget "Git.Git"; if (Have "git") { Ok "installed" } else { Warn "installed - reopen a terminal if 'git' isn't found" } }
+else { WingetInstall "Git.Git"; if (Have "git") { Ok "installed" } else { Warn "installed - reopen a terminal if 'git' isn't found" } }
 
 Step 2 "Node.js LTS"
 if (Have "node") { Skip "already installed ($(node --version))" }
-else { Winget "OpenJS.NodeJS.LTS"; if (Have "node") { Ok "installed" } else { Warn "installed - reopen a terminal if 'node' isn't found" } }
+else { WingetInstall "OpenJS.NodeJS.LTS"; if (Have "node") { Ok "installed" } else { Warn "installed - reopen a terminal if 'node' isn't found" } }
 
 Step 3 "Rust toolchain (compiles the desktop shell)"
 $cargo = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
 if (Have "cargo") { $cargo = "cargo"; Skip "already installed ($(cargo --version))" }
 elseif (Test-Path $cargo) { Skip "already installed" }
 else {
-  Winget "Rustlang.Rustup"
+  WingetInstall "Rustlang.Rustup"
   $rustup = Join-Path $env:USERPROFILE ".cargo\bin\rustup.exe"
   if (Test-Path $rustup) { & $rustup default stable-x86_64-pc-windows-msvc 2>$null | Out-Null; Ok "installed" }
   else { Warn "Rustup may need a new terminal - re-run this script if the build fails" }
@@ -94,7 +97,7 @@ if (Have-MSVC) { Skip "C++ build tools already present" }
 elseif ($SkipBuildTools) { Warn "skipped (-SkipBuildTools) - the build will fail without a C++ linker" }
 else {
   Warn "Not found. Installing the C++ workload (large download ~2-4 GB, one time)..."
-  winget install --id Microsoft.VisualStudio.2022.BuildTools -e --silent `
+  winget.exe install --id Microsoft.VisualStudio.2022.BuildTools -e --silent `
     --accept-package-agreements --accept-source-agreements `
     --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" | Out-Null
   if (Have-MSVC) { Ok "C++ build tools installed" }
