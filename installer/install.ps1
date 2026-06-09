@@ -130,6 +130,19 @@ if (Have "claude") { Skip "already installed" }
 elseif (Have "npm") { npm install -g @anthropic-ai/claude-code | Out-Null; Sync-Path; Ok "installed - log in later by running: claude" }
 else { Warn "npm not on PATH yet - reopen a terminal and run: npm install -g @anthropic-ai/claude-code" }
 
+# ---- stop a running instance first -------------------------------------------
+# A re-install while the office is open locks the very files we update + rebuild
+# + re-brand below (git reset, the shell exe, the branded BagIdeaOffice.exe) ->
+# "being used by another process". Stop the whole suite first; no-op on a fresh
+# machine. (Branded exe is BagIdeaOffice.exe, not "Godot*".)
+Get-CimInstance Win32_Process | Where-Object {
+  ($_.Name -eq "node.exe" -and $_.CommandLine -match "server\.js") -or
+  $_.Name -eq "bagidea-office-shell.exe" -or
+  $_.Name -eq "BagIdeaOffice.exe" -or
+  $_.Name -like "Godot*"
+} | ForEach-Object { taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null }
+Start-Sleep 1
+
 # ---- the app: clone (or pull) ------------------------------------------------
 Step 7 "Get the app -> $APP"
 if (-not (Have "git")) { Warn "git not on PATH yet - reopen a terminal and re-run this script"; exit 1 }
@@ -215,11 +228,16 @@ if ((Test-Path $gexe) -and (Test-Path $ico)) {
   if (-not (Test-Path $rcedit)) {
     try { Invoke-WebRequest -Uri "https://github.com/electron/rcedit/releases/download/v2.0.0/rcedit-x64.exe" -OutFile $rcedit } catch {}
   }
-  Copy-Item $gexe $branded -Force
-  if (Test-Path $rcedit) {
+  $copied = $false
+  try { Copy-Item $gexe $branded -Force -ErrorAction Stop; $copied = $true }
+  catch {
+    if (Test-Path $branded) { Skip "branded exe in use (office running?) - kept the existing branded exe" }
+    else { Warn "couldn't create branded exe: $($_.Exception.Message)" }
+  }
+  if ($copied -and (Test-Path $rcedit)) {
     & $rcedit $branded --set-icon $ico --set-version-string "FileDescription" "BagIdea Office" --set-version-string "ProductName" "BagIdea Office" 2>$null
     Ok "branded exe ready - the taskbar shows BAG IDEA from launch"
-  } else { Warn "couldn't fetch rcedit - the default Godot icon will be used" }
+  } elseif ($copied) { Warn "couldn't fetch rcedit - the default Godot icon will be used" }
 } else { Skip "skipped (Godot or logo.ico missing)" }
 
 # ---- hook paths: the permission/notify hooks use absolute paths --------------
