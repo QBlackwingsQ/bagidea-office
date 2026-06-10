@@ -3225,6 +3225,10 @@ const server = http.createServer((req, res) => {
         reg.lang = String(JSON.parse(body).lang || "en").slice(0, 5).toLowerCase();
         saveReg();
         pushRoster();
+        // Tell the wallpaper world to re-pull its status-plate translations so
+        // the 3D office matches the overlay's language live (transient — not
+        // journaled; godot also reads the language on its own startup).
+        broadcast({ type: "ui.lang", lang: reg.lang }, false);
         res.writeHead(200); res.end("ok");
       } catch { res.writeHead(400); res.end("bad json"); }
     });

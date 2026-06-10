@@ -28,6 +28,9 @@ var meeting_cycle: Array[String] = ["m_s1", "m_s2", "m_s3", "m_s4"]
 var bed_pool: Array[String] = ["bed1", "bed2", "b3", "b4", "b5", "b6", "b7", "b8"]
 var ceo: Sprite3D
 
+var _i18n := {}            # thai status plate -> translation for the chosen language
+var _lang := "en"
+var _i18n_req: HTTPRequest
 var _pos_req: HTTPRequest
 var _pos_busy := false
 
@@ -48,6 +51,13 @@ func _ready() -> void:
 	t.autostart = true
 	t.timeout.connect(_stream_positions)
 	add_child(t)
+	# Localized status plates: read the chosen language + pull its map (same seed
+	# the overlay uses) so the wallpaper matches the overlay's language.
+	_lang = _read_lang()
+	_i18n_req = HTTPRequest.new()
+	add_child(_i18n_req)
+	_i18n_req.request_completed.connect(_on_i18n_loaded)
+	_fetch_i18n()
 
 ## Rooms were rearranged (jigsaw swap) → drop everyone back onto their home
 ## anchor so they stand in the correct room. Normal walking resumes after.
@@ -87,8 +97,40 @@ func _stream_positions() -> void:
 	if err != OK:
 		_pos_busy = false
 
+func _read_lang() -> String:
+	var p := ProjectSettings.globalize_path("res://..").path_join("daemon/registry.json")
+	if FileAccess.file_exists(p):
+		var fl := FileAccess.open(p, FileAccess.READ)
+		if fl:
+			var data: Variant = JSON.parse_string(fl.get_as_text())
+			if data is Dictionary and data.has("lang"):
+				return String(data["lang"])
+	return "en"
+
+func _fetch_i18n() -> void:
+	if _lang == "" or _lang == "th":
+		_i18n = {}
+		return
+	if is_instance_valid(_i18n_req):
+		_i18n_req.request("http://127.0.0.1:8787/i18n/all?lang=" + _lang)
+
+func _on_i18n_loaded(_res: int, code: int, _h: PackedStringArray, body: PackedByteArray) -> void:
+	if code != 200:
+		return
+	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if data is Dictionary and data.has("map") and data["map"] is Dictionary:
+		_i18n = data["map"]
+
+## Localize a Thai status plate; Thai mode + any unmapped string pass through.
+func ui(s: String) -> String:
+	return String(_i18n.get(s, s))
+
 func set_connected(connected: bool) -> void:
 	world.set_totem(connected)
+	# The daemon is definitely up once the socket connects — (re)pull the status
+	# map now in case the _ready fetch raced an still-booting daemon.
+	if connected and _i18n.is_empty() and _lang != "" and _lang != "th":
+		_fetch_i18n()
 
 ## Single place where an agent's state changes — body, plate, everything.
 func _set_state(a: Dictionary, state: String) -> void:
@@ -141,6 +183,10 @@ func handle(evt: Dictionary) -> void:
 		return
 	if type == "ui.sound":
 		Sfx.enabled = bool(evt.get("on", true))
+		return
+	if type == "ui.lang":
+		_lang = str(evt.get("lang", "en"))
+		_fetch_i18n()
 		return
 	if type == "ui.visibility":
 		# Office hidden: silence + crawl the renderer; agents keep WORKING.
@@ -292,12 +338,12 @@ func handle(evt: Dictionary) -> void:
 				_maybe_focus(a.node, 0.7)
 				_focus_kick(a.node, 7.0)
 			_set_state(a, "working")
-			a.node.set_status("รับคำสั่งจาก CEO 📋")
+			a.node.set_status(ui("รับคำสั่งจาก CEO 📋"))
 			a["hold_at_ceo"] = Time.get_ticks_msec() / 1000.0 + 28.0
 			if is_instance_valid(ceo):
 				ceo_hold_until = Time.get_ticks_msec() / 1000.0 + 20.0
 				ceo.walk_to([ceo.position])  # boss stops mid-stride to give the order
-				ceo.set_status("สั่งงาน 🗣")
+				ceo.set_status(ui("สั่งงาน 🗣"))
 				Fx.spawn(ceo, "heart", Vector3(0, 1.3, 0))
 				_tail_ceo(a)
 		"task.delegated":
@@ -306,11 +352,11 @@ func handle(evt: Dictionary) -> void:
 			# Supervisor clones split off to shadow the rest.
 			a["hold_at_ceo"] = 0.0  # order taken — moving out
 			var tgt := str(evt.get("target", ""))
-			a.node.set_status("มอบหมาย → " + tgt + " 📋")
+			a.node.set_status(ui("มอบหมาย") + " → " + tgt + " 📋")
 			if not theatrical:
 				Sfx.play("blip")
 			if agents.has(tgt) and not supervising.has(tgt):
-				agents[tgt].node.set_status("รับงานใหม่ ✏")
+				agents[tgt].node.set_status(ui("รับงานใหม่ ✏"))
 				awaiting_delivery[tgt] = true  # they'll walk the result back
 				# Head to the SHARED ops floor at once — never the Director's desk.
 				if tgt != "main":
@@ -325,7 +371,7 @@ func handle(evt: Dictionary) -> void:
 			if not theatrical:
 				Sfx.play("ding")
 				_maybe_focus(a.node, 0.8, 8.0)
-			a.node.set_status("🔔 " + str(evt.get("text", "เตือนนัด")).left(24))
+			a.node.set_status("🔔 " + str(evt.get("text", ui("เตือนนัด"))).left(24))
 			if is_instance_valid(ceo):
 				ceo_hold_until = Time.get_ticks_msec() / 1000.0 + 12.0
 				a.node.walk_to(world.path_between(a.node.position,
@@ -337,7 +383,7 @@ func handle(evt: Dictionary) -> void:
 			if not theatrical:
 				Sfx.play("chime")
 				_maybe_focus(a.node, 0.6, 8.0)
-			a.node.set_status("ส่งสรุปงานให้ CEO 📋")
+			a.node.set_status(ui("ส่งสรุปงานให้ CEO 📋"))
 			if is_instance_valid(ceo):
 				ceo_hold_until = Time.get_ticks_msec() / 1000.0 + 12.0
 				a.node.walk_to([ceo.position + Vector3(-1.15, 0, 0.6)])
@@ -347,7 +393,7 @@ func handle(evt: Dictionary) -> void:
 			# The parent stays at its desk awaiting its clones' reports.
 			_to_desk(a)
 			_maybe_focus(a.node, 0.55, 7.0)
-			a.node.set_status("รอผล sub-agents 👻")
+			a.node.set_status(ui("รอผล sub-agents 👻"))
 		"voice.say":
 			# An agent spoke out loud — show what they said as a speech bubble too.
 			if not evt.get("replay", false):
@@ -700,7 +746,7 @@ func _deliver_to_main(a: Dictionary) -> void:
 	awaiting_delivery.erase(a.id)
 	_release_desk(a)
 	_set_state(a, "idle")
-	a.node.set_status("เอางานไปส่ง 📦")
+	a.node.set_status(ui("เอางานไปส่ง 📦"))
 	if agents.has("main") and is_instance_valid(agents["main"].node):
 		var m: Sprite3D = agents["main"].node
 		var d: float = a.node.walk_to(world.path_between(a.node.position,
@@ -709,9 +755,9 @@ func _deliver_to_main(a: Dictionary) -> void:
 		if is_instance_valid(a.node):
 			Sfx.play("page")
 			Fx.spawn(a.node, "sparkle", Vector3(0, 0.5, 0), 0.035)
-			a.node.set_status("ส่งงานแล้ว ✓")
+			a.node.set_status(ui("ส่งงานแล้ว ✓"))
 			if is_instance_valid(m):
-				m.set_status("รับงานจาก " + str(a.node.agent_name) + " 📦")
+				m.set_status(ui("รับงานจาก") + " " + str(a.node.agent_name) + " 📦")
 				_clear_status_later(agents["main"], 5.0)
 	await get_tree().create_timer(2.5).timeout
 	if a.state == "idle" and is_instance_valid(a.node):
@@ -884,7 +930,7 @@ func _main_wander_loop() -> void:
 		var r := randf()
 		if r < 0.30 and is_instance_valid(ceo):
 			_walk(a.node, ["exec_c", "ceo_desk", "pace_b"].pick_random())
-			a.node.set_status("แวะหา CEO 👑")
+			a.node.set_status(ui("แวะหา CEO 👑"))
 			_clear_status_later(a, 5.0)
 		elif r < 0.60:
 			var mates: Array = []
@@ -898,7 +944,7 @@ func _main_wander_loop() -> void:
 				var mate: Dictionary = mates.pick_random()
 				a.node.walk_to(world.path_between(a.node.position,
 					mate.node.position + Vector3(0.6, 0, 0.35)))
-				a.node.set_status("คุยกับทีม 💬")
+				a.node.set_status(ui("คุยกับทีม 💬"))
 				_clear_status_later(a, 6.0)
 		else:
 			_walk(a.node, rounds.pick_random())
@@ -989,7 +1035,7 @@ func _spawn_meeting_ghost(id: String, seat: String) -> void:
 	g.set_ghost()
 	g.position = pnode.position + Vector3(0.3, 0, 0.25)
 	g.set_state("meeting")
-	g.set_status("ประชุมแทนตัวจริง 🗣")
+	g.set_status(ui("ประชุมแทนตัวจริง 🗣"))
 	meeting_ghosts[id] = g
 	Burst.spawn(world, pnode.position, 0.65)
 	Sfx.play("split")
@@ -1032,12 +1078,12 @@ func _spawn_supervisor(tgt: String) -> void:
 	g.hair_color = mnode.hair_color
 	g.skin_color = mnode.skin_color
 	g.rank = "ghost"
-	g.agent_name = str(mnode.agent_name) + " · คุมงาน"
+	g.agent_name = str(mnode.agent_name) + " · " + ui("คุมงาน")
 	g.agent_role = "supervisor"
 	get_parent().add_child(g)
 	g.set_ghost()
 	g.position = mnode.position + Vector3(0.3, 0, 0.25)
-	g.set_status("คุมงาน → " + str(agents[tgt].node.agent_name) + " 👀")
+	g.set_status(ui("คุมงาน") + " → " + str(agents[tgt].node.agent_name) + " 👀")
 	Burst.spawn(world, mnode.position)
 	Sfx.play("split")
 	supervising[tgt] = {"ghost": g}
@@ -1088,7 +1134,7 @@ func _idle_life_loop() -> void:
 			_act_explore(a)        # a rare peek at the server / meeting room
 
 func _act_tv(a: Dictionary) -> void:
-	a.node.set_status("ดูทีวี 📺")
+	a.node.set_status(ui("ดูทีวี 📺"))
 	var spot := Vector3(-7.25, 0.86, randf_range(7.6, 9.2))
 	var d: float = a.node.walk_to(world.path_to(a.node.position, "rec_s1") + [spot])
 	await get_tree().create_timer(d).timeout
@@ -1106,7 +1152,7 @@ func _act_tv(a: Dictionary) -> void:
 func _act_ball(a: Dictionary) -> void:
 	if not is_instance_valid(world.ball):
 		return
-	a.node.set_status("เตะบอล ⚽")
+	a.node.set_status(ui("เตะบอล ⚽"))
 	var bp: Vector3 = world.ball.position
 	var d: float = a.node.walk_to(world.path_to(a.node.position, "rec_s2") +
 		[Vector3(bp.x - 0.45, 0.86, bp.z + 0.3)])
@@ -1122,7 +1168,7 @@ func _act_ball(a: Dictionary) -> void:
 func _act_pet(a: Dictionary) -> void:
 	if not is_instance_valid(world.pet):
 		return
-	a.node.set_status("เล่นกับแมว 🐱")
+	a.node.set_status(ui("เล่นกับแมว 🐱"))
 	var pp: Vector3 = world.pet.position
 	var d: float = a.node.walk_to(world.path_to(a.node.position, "rec_c") +
 		[Vector3(pp.x + 0.7, 0.86, pp.z + 0.35)])
@@ -1141,8 +1187,8 @@ func _act_chat(a: Dictionary, pool: Array) -> void:
 	if others.is_empty():
 		return
 	var b: Dictionary = others.pick_random()
-	a.node.set_status("คุยเล่น 💬")
-	b.node.set_status("คุยเล่น 💬")
+	a.node.set_status(ui("คุยเล่น 💬"))
+	b.node.set_status(ui("คุยเล่น 💬"))
 	var d: float = a.node.walk_to(world.path_between(a.node.position,
 		b.node.position + Vector3(0.6, 0, 0.35)))
 	await get_tree().create_timer(d + 0.3).timeout
@@ -1155,7 +1201,7 @@ func _act_chat(a: Dictionary, pool: Array) -> void:
 ## Hang out in the cafeteria — given equal weight to the rec room so idle
 ## agents don't all pile into one corner.
 func _act_cafe(a: Dictionary) -> void:
-	a.node.set_status("พักดื่มกาแฟ ☕")
+	a.node.set_status(ui("พักดื่มกาแฟ ☕"))
 	var seat: String = ["cafe_s1", "cafe_s2", "cafe_c"].pick_random()
 	var d: float = _walk(a.node, seat)
 	await get_tree().create_timer(d + randf_range(8.0, 16.0)).timeout
@@ -1166,7 +1212,7 @@ func _act_cafe(a: Dictionary) -> void:
 ## for a change of scene — deliberately rare so those rooms stay special.
 func _act_explore(a: Dictionary) -> void:
 	var spot: String = "server_c" if randf() < 0.5 else "meeting_c"
-	a.node.set_status("เปลี่ยนบรรยากาศ 🚶")
+	a.node.set_status(ui("เปลี่ยนบรรยากาศ 🚶"))
 	var d: float = _walk(a.node, spot)
 	await get_tree().create_timer(d + randf_range(6.0, 12.0)).timeout
 	if a.state == "idle":
@@ -1196,7 +1242,7 @@ func _nap_loop() -> void:
 func _take_nap(a: Dictionary) -> void:
 	a.bed = bed_pool.pop_front()
 	_set_state(a, "resting")
-	a.node.set_status("งีบพักผ่อน 💤")
+	a.node.set_status(ui("งีบพักผ่อน 💤"))
 	_walk(a.node, a.bed)
 	await get_tree().create_timer(randf_range(60.0, 180.0)).timeout
 	# Wake on the alarm only if nothing else woke them first.
@@ -1205,7 +1251,7 @@ func _take_nap(a: Dictionary) -> void:
 			bed_pool.append(a.bed)
 			a.bed = ""
 		_set_state(a, "idle")
-		a.node.set_status("ตื่นแล้ว ☀")
+		a.node.set_status(ui("ตื่นแล้ว ☀"))
 		_walk(a.node, _next_seat())
 		_clear_status_later(a, 4.0)
 
