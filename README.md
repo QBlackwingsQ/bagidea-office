@@ -250,12 +250,19 @@ Three independent processes: the **daemon** keeps agents running even if renderi
 On a **bare machine** it installs everything needed — Git, Node LTS, Rust, the
 **Visual Studio C++ Build Tools** (the Rust linker, and the most common reason a
 build fails), Godot 4.6.3 and the Claude Code CLI — then clones the app to
-`%LOCALAPPDATA%\BagIdeaOffice`, builds the shell, brands the window icon, wires the
-`bagidea` command into your PATH and creates a Start Menu shortcut. Freshly
-installed tools are pulled onto the current PATH so it finishes in one pass:
+`%LOCALAPPDATA%\BagIdeaOffice` (Windows) or `~/BagIdeaOffice` (macOS), builds the
+shell, brands the window icon, wires the `bagidea` command into your PATH and
+creates a Start Menu shortcut or Bin link. Freshly installed tools are pulled
+onto the current PATH so it finishes in one pass:
 
+**Windows:**
 ```powershell
 irm https://raw.githubusercontent.com/bagidea/bagidea-office/main/installer/install.ps1 | iex
+```
+
+**macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/spondanai/bagidea-office/feat/macos-support/installer/install-mac.sh | bash
 ```
 
 > First time only: open a **new** terminal, run `claude` once to log in to Claude,
