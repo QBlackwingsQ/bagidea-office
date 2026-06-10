@@ -181,13 +181,13 @@ async function main() {
     if (!exe) { bad(`shell exe not found — run ${c.accent}cargo build --release${c.reset} in shell/`); return false; }
     spawn(exe, [], { cwd: path.dirname(exe), detached: true, stdio: "ignore" }).unref();
     process.stdout.write(`  ${c.gray}${verb}${c.reset}`);
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       process.stdout.write(`${c.gray}.${c.reset}`);
       if (await daemonUp()) { console.log(""); return true; }
     }
     console.log("");
-    warn("Started, but the daemon isn't answering yet — check the screen");
+    warn("Still booting — if the office isn't on screen yet, give it a moment");
     return false;
   };
 

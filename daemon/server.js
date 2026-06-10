@@ -324,7 +324,9 @@ if (!fs.existsSync(OFFICE_MD)) {
       let seed = {}, run = {};
       try { seed = JSON.parse(fs.readFileSync(path.join(seedDir, f), "utf8")); } catch {}
       try { run = JSON.parse(fs.readFileSync(path.join(runDir, f), "utf8")); } catch {}
-      fs.writeFileSync(path.join(runDir, f), JSON.stringify({ ...seed, ...run }));
+      const out = path.join(runDir, f), tmp = out + ".tmp";
+      fs.writeFileSync(tmp, JSON.stringify({ ...seed, ...run }));
+      fs.renameSync(tmp, out); // atomic — never leaves a half-written cache
     }
   } catch {}
 })();
@@ -3146,7 +3148,9 @@ const server = http.createServer((req, res) => {
         const chunks = [];
         for (let i = 0; i < missing.length; i += 60) chunks.push(missing.slice(i, i + 60));
         let pending = chunks.length;
-        const finish = () => { if (--pending <= 0) { fs.writeFileSync(file, JSON.stringify(cache)); reply(); } };
+        const finish = () => { if (--pending <= 0) {
+          try { const tmp = file + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(cache)); fs.renameSync(tmp, file); } catch {}
+          reply(); } };
         for (const chunk of chunks) {
           const prompt = `Translate these UI strings from Thai to ${langName}. ` +
             `Keep emoji, symbols, numbers, code and placeholders (like \${...}, <...>) EXACTLY. ` +
