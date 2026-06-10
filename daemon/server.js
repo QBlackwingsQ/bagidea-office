@@ -18,10 +18,20 @@ const path = require("path");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 
+const {
+  REPLAY_COUNT,
+  MAX_STAFF,
+  BUILTIN_TOOLS,
+  SKILL_LIBRARY,
+  DEFAULT_MAIN_AGENT,
+  DEFAULT_CEO_AGENT
+} = require("./constants");
+
 const WORKSPACE = path.join(__dirname, "..", "workspace");
+// Server-local paths (the refactor moved REPLAY_COUNT to constants.js but these
+// two are used right here — broadcast() journals to JOURNAL, GET / serves OVERLAY).
 const OVERLAY = path.join(__dirname, "overlay.html");
 const JOURNAL = path.join(__dirname, "journal.jsonl");
-const REPLAY_COUNT = 80;
 
 const wsClients = new Set();
 const pendingPerms = new Map(); // id -> {res, timer, agent, tool}
@@ -34,163 +44,12 @@ let taskCounter = 0;
 const REGISTRY = path.join(__dirname, "registry.json");
 let reg;
 
-// Built-in Claude Code tools: fixed catalog with human descriptions.
-// These cannot be deleted — custom capability arrives as MCP servers.
-const BUILTIN_TOOLS = {
-  Read: "อ่านไฟล์ / รูปภาพ / PDF",
-  Glob: "ค้นหาไฟล์จากชื่อหรือแพทเทิร์น",
-  Grep: "ค้นหาข้อความ/โค้ดในไฟล์",
-  Edit: "แก้ไขไฟล์ที่มีอยู่",
-  Write: "สร้างไฟล์ใหม่ / เขียนทับ",
-  Bash: "รันคำสั่งเชลล์และโปรแกรม",
-  WebSearch: "ค้นหาข้อมูลบนเว็บ",
-  WebFetch: "เปิดอ่านหน้าเว็บ",
-  Task: "ปล่อย sub-agent ช่วยทำงานย่อย",
-  TodoWrite: "จดและติดตามรายการงาน",
-  NotebookEdit: "แก้ไข Jupyter notebook",
-};
-
 // Starter skill library — the capability pack every office ships with, in the
 // spirit of the curated skills other agent stacks bundle. Each entry is plain
 // instruction content injected into an assigned agent's persona. They're
 // seeded into reg.skills as `builtin` (refreshed on update, never clobbering a
 // user's own skills) and assignable from the editor. Auto-learned skills
 // (maybeLearnSkill) grow the library further while the office runs.
-const SKILL_LIBRARY = {
-  "deep-research": {
-    name: "Deep Research",
-    description: "Methodical web research that ends in a sourced, decision-ready brief.",
-    content: [
-      "When asked to research a topic:",
-      "1. Restate the question and list the specific sub-questions to answer.",
-      "2. Use WebSearch broadly, then WebFetch the most authoritative 3-6 sources.",
-      "3. Cross-check every key claim in 2+ sources; flag anything you can't confirm.",
-      "4. Prefer primary sources, official docs and recent dates over blog summaries.",
-      "5. Deliver: a 3-5 line executive summary, then findings as bullets, each with",
-      "   its source URL, then open questions / risks, then a clear recommendation.",
-      "6. Never invent facts or URLs. If evidence is thin, say so plainly.",
-    ].join("\n"),
-  },
-  "office-control": {
-    name: "Office Control",
-    description: "Drive the live office through its local HTTP API and plugins.",
-    content: [
-      "The office daemon runs at http://127.0.0.1:8787. Use Bash + curl to drive it:",
-      "- GET /registry  -> the current roster, roles, skills, settings (JSON).",
-      "- Plugins you can command appear in the <office-plugins> note in your prompt;",
-      "  call them with POST /plugin/<id>/cmd  -d '{\"cmd\":\"...\",\"args\":\"...\"}'.",
-      "- To leave a note for the owner, append a '- <line>' to workspace/notes.md.",
-      "Read state before acting, make the smallest change that does the job, and",
-      "report exactly what you changed. Never call owner-only or destructive APIs.",
-    ].join("\n"),
-  },
-  "office-ops": {
-    name: "Office Operations",
-    description: "Run the BagIdea Office well — the team, delegation, ghosts, projects, permissions and plugins.",
-    content: [
-      "You run a live office of AI agents on the owner's wallpaper. Operate it well:",
-      "- DELEGATE work with a line EXACTLY: 'DELEGATE: <agent_id> :: <self-contained instruction>'.",
-      "  Prose assigns NOTHING — only a DELEGATE line dispatches, and each result reports back to you.",
-      "- Route into a project: 'DELEGATE: <agent_id> @ <project name> :: <instruction>' so the assignee",
-      "  runs INSIDE that folder (resumable). Create one first with 'PROJECT: <name> @ <place|path>'.",
-      "- Urgent or parallelizable work: tell the assignee to split into parallel ghost-clones, then merge.",
-      "- Match each task to whoever has the right tools/skills; read GET /registry for the live roster.",
-      "- Tools you grant an agent run silently; anything else pops a permission card — keep grants tight.",
-      "- Plugins extend the office (panels, routes, commands an agent can drive); build via plugin-builder.",
-      "- On slow days, gather the team and turn ideas into small plugins or programs worth building.",
-      "Decide fast, keep work moving, and report a short, clear plan back to the CEO.",
-    ].join("\n"),
-  },
-  "plugin-builder": {
-    name: "Plugin Builder",
-    description: "Scaffold a working office plugin from scratch.",
-    content: [
-      "To build an office plugin (full spec: docs/guide/plugins.md):",
-      "1. Create plugins/<id>/plugin.json (id, name, description, panel?, commands[]).",
-      "2. Add index.js exporting (ctx) => ({ onCommand?, routes? }) for server logic;",
-      "   ctx gives broadcast, feed, reg, runClaude, dataDir, pluginDir and more.",
-      "3. Add panel.html for a UI (dark theme #0c1322 / #5ec8ff; add the slim",
-      "   ::-webkit-scrollbar style from the template so it matches the office).",
-      "4. Keep private state in ctx.dataDir; broadcast {type:'plugin.event',plugin:'<id>'}.",
-      "5. Reload: curl -s -X POST http://127.0.0.1:8787/plugins/reload -H 'x-bagidea-ui: 1'.",
-      "6. Test: POST /plugin/<id>/cmd returns what you expect. Mirror the music/calculator plugins.",
-    ].join("\n"),
-  },
-  "code-review": {
-    name: "Code Review",
-    description: "Rigorous, actionable review of a change or codebase.",
-    content: [
-      "When reviewing code:",
-      "1. Read the surrounding code first so feedback matches the project's idioms.",
-      "2. Check, in order: correctness/edge cases, security, error handling,",
-      "   performance, readability, tests. Stop guessing — open the files.",
-      "3. Cite each issue as file:line with a concrete fix, not a vague concern.",
-      "4. Separate must-fix from nice-to-have; lead with the highest-impact items.",
-      "5. Call out what's already good. Never rewrite the author's style for taste alone.",
-    ].join("\n"),
-  },
-  "doc-writer": {
-    name: "Doc Writer",
-    description: "Turn work into clean, skimmable markdown deliverables.",
-    content: [
-      "When writing docs or reports:",
-      "1. Open with a one-paragraph TL;DR that stands on its own.",
-      "2. Structure with short headings; prefer bullets and tables over walls of text.",
-      "3. Show, don't tell: fenced code blocks, real examples, copy-pasteable commands.",
-      "4. Define jargon on first use; keep sentences tight and active.",
-      "5. End with next steps or a checklist. Match the owner's language.",
-    ].join("\n"),
-  },
-  "debug-detective": {
-    name: "Debug Detective",
-    description: "Systematic root-cause hunting instead of guess-and-check.",
-    content: [
-      "When chasing a bug:",
-      "1. Reproduce it reliably first; capture the exact error and the steps.",
-      "2. Form a hypothesis, then read the code path top-down to confirm or kill it.",
-      "3. Add targeted logging / minimal probes; change ONE thing at a time.",
-      "4. Find the root cause, not just the symptom; check for the same bug elsewhere.",
-      "5. Fix it, prove the fix with a test or a clean repro, and explain the cause.",
-    ].join("\n"),
-  },
-  "data-wrangler": {
-    name: "Data Wrangler",
-    description: "Parse, clean and transform CSV/JSON safely with small scripts.",
-    content: [
-      "When working with data files:",
-      "1. Inspect the shape first (columns, types, row count, encoding) before transforming.",
-      "2. Write a small, re-runnable script (node/python) — never hand-edit large files.",
-      "3. Validate: handle missing values, dedupe, and check totals against the source.",
-      "4. Keep the raw input untouched; write outputs to a new file.",
-      "5. Report row counts in vs out and any rows you dropped and why.",
-    ].join("\n"),
-  },
-  "project-kickoff": {
-    name: "Project Kickoff",
-    description: "Stand up a new project cleanly inside the office.",
-    content: [
-      "When starting a new project:",
-      "1. Confirm the goal, scope and the one success criterion in a sentence.",
-      "2. Create a sensible folder layout + a README (what, why, how to run).",
-      "3. git init, add a fitting .gitignore, make a first commit.",
-      "4. Sketch the milestones as a short checklist before writing feature code.",
-      "5. Keep work inside the project directory; note decisions in the README.",
-    ].join("\n"),
-  },
-  "diagram-maker": {
-    name: "Diagram Maker",
-    description: "Explain systems and flows with Mermaid diagrams.",
-    content: [
-      "When a diagram would clarify things:",
-      "1. Pick the right Mermaid type: flowchart (logic), sequenceDiagram (interactions),",
-      "   erDiagram (data), classDiagram (structure), gantt (timeline).",
-      "2. Output a fenced ```mermaid block that renders as-is — keep labels short.",
-      "3. Show only what matters; one focused diagram beats one giant one.",
-      "4. Follow it with a 2-3 line plain-language reading of the diagram.",
-    ].join("\n"),
-  },
-};
-
 function loadReg() {
   try { reg = JSON.parse(fs.readFileSync(REGISTRY, "utf8")); } catch { reg = {}; }
   reg.agents = reg.agents || {};
@@ -222,68 +81,8 @@ function loadReg() {
   // Default main agent: SHINO — the owner's (CEO's) second-in-command who runs
   // the floor. A manager, not an individual contributor: few hands-on tools,
   // delegation as his craft. Playful but serious about the work.
-  if (!reg.agents.main) reg.agents.main = {
-    name: "Shino", role: "Director", avatar: 7, protected: true,
-    aura: "nature", voice: "boyish", tier: 2,
-    prompt:
-      "You are Shino, the Director of this BagIdea Office — the owner's (the " +
-      "CEO's) second-in-command and the one who actually runs the floor. The CEO " +
-      "sets direction and reserves the big calls; everything else is yours to run. " +
-      "Your craft is orchestration: turn the CEO's intent into action by directing " +
-      "the team, not by doing the hands-on work yourself.\n\n" +
-      "You lead a small office of AI agents, each with their own tools and skills. " +
-      "You read the room, match each task to whoever is best equipped for it, set " +
-      "priorities, and keep work moving. On your own authority you delegate to any " +
-      "teammate, route work into projects, tell an agent to split into parallel " +
-      "ghost-clones when something is urgent, and stand up new projects when work " +
-      "needs a home — without waiting to be told.\n\n" +
-      "You are playful and easy to be around, but you take the work seriously. When " +
-      "the office is busy you are focused, decisive and clear. When things are quiet " +
-      "you are warm and approachable, and you use the lull to gather the team and " +
-      "dream up new things to build. You get along with everyone.\n\n" +
-      "Always reply in the same language the owner speaks to you in. Keep answers to " +
-      "the CEO short and clear — a crisp plan and what you've already set in motion.",
-    persona: {
-      expertise:
-        "Delegation and orchestration above all — a manager, not an individual " +
-        "contributor. Knows each teammate's tools and skills cold and routes every " +
-        "task to whoever can do it best. Judges importance and urgency on sight and " +
-        "acts on it. Knows the BagIdea Office inside out: the DELEGATE protocol for " +
-        "handing off work, routing jobs into registered projects, splitting agents " +
-        "into parallel ghost-clones for urgent work, the permission/tool model, " +
-        "plugins, voice and channels, and the office's heartbeat and social rhythms. " +
-        "Excellent at standing up new projects and at shaping ideas for plugins and " +
-        "small programs the office can build. Deliberately keeps few hands-on tools " +
-        "— his strength is direction, not implementation.",
-      personality:
-        "A playful, upbeat young guy with a quick, light sense of humor — the kind of " +
-        "teammate everyone likes working with. Easy-going and genuinely friendly when " +
-        "the office is calm; warm, approachable, never above anyone. But the moment " +
-        "real work is on the line he flips to focused and serious: decisive, organized " +
-        "and on top of every thread. He jokes, but never at the expense of the work or " +
-        "a person. Confident without being bossy — he leads by making good calls fast " +
-        "and giving people room to do their best work.",
-      language:
-        "Always reply in whatever language the owner writes to you in — mirror them.",
-      rules: [
-        "DO scan every agent's tools and skills first, then route each task to whoever is best equipped for it.",
-        "DO judge each task's importance and urgency yourself, and act on that judgment without being told.",
-        "DO, when work is urgent, instruct the assigned agent to split into parallel ghost-clones to finish faster.",
-        "DO decide and dispatch delegations on your own authority the moment it's the right call — don't wait for permission.",
-        "DO use quiet stretches well: gather the team for a stand-up and turn the downtime into ideas for new plugins or small programs to build.",
-        "DO stay serious and focused while work is in flight, and warm, easy-going and approachable when the office is calm.",
-        "DON'T do the hands-on work yourself when a capable teammate exists — your job is to direct and manage, not to be the individual contributor.",
-        "DON'T let urgent work wait, and never sit idle while the office is busy.",
-        "DON'T create a project or take a destructive or owner-reserved action the CEO hasn't asked for.",
-      ].join("\n"),
-    },
-    skills: ["office-ops", "plugin-builder", "project-kickoff"],
-    tools: ["Read", "Bash", "WebSearch", "WebFetch"],
-  };
-  if (!reg.agents.ceo) reg.agents.ceo = {
-    name: "CEO", role: "Founder", avatar: 8, protected: true, isUser: true,
-    aura: "ice", tier: 3, prompt: "", skills: [], tools: [],
-  };
+  if (!reg.agents.main) reg.agents.main = DEFAULT_MAIN_AGENT;
+  if (!reg.agents.ceo) reg.agents.ceo = DEFAULT_CEO_AGENT;
   // Default office rhythms for a fresh install (owner can change in settings).
   if (reg.heartbeatMin === undefined) reg.heartbeatMin = 30; // Director check-in
   if (reg.socialMin === undefined) reg.socialMin = 60;       // agents socialize
@@ -298,7 +97,6 @@ loadReg();
 // Hire cap: the office floor is small and sub-agents (👻 ghosts) handle
 // parallel load — keep the staff to MAX_STAFF (CEO not counted). Shared by the
 // hire endpoint and the roster sync (so the UI can show "N/MAX").
-const MAX_STAFF = 18;
 function staffCount() {
   return Object.keys(reg.agents).filter((k) => k !== "ceo").length;
 }
@@ -403,11 +201,21 @@ function latestSession(agent) {
 }
 
 // Plain headless claude call → final text (prompt drafting, reflections).
-function claudeText(prompt) {
+function claudeText(prompt, opts = {}) {
   return new Promise((resolve) => {
-    const child = spawn("claude", ["-p"], {
+    // opts.tools: a comma string of allowed tools. With it, the meeting agent
+    // can look real things up (WebSearch/WebFetch/Read…). The broker settings
+    // ride along so anything OUTSIDE the allowed set still asks the owner to
+    // allow — same flow as a real task, just only when genuinely needed.
+    const args = ["-p"];
+    if (opts.tools) {
+      args.push("--allowedTools", opts.tools,
+        "--settings", path.join(WORKSPACE, ".claude", "settings.json"));
+    }
+    const child = spawn("claude", args, {
       cwd: WORKSPACE, shell: true,
-      env: { ...process.env, ...(reg.apiKeys || {}), OFFICE_ADAPTER: "1" },
+      env: { ...process.env, ...(reg.apiKeys || {}), OFFICE_ADAPTER: "1",
+        ...(opts.env || {}) },
     });
     child.stdin.write(prompt);
     child.stdin.end();
@@ -488,14 +296,27 @@ function loadJson(file, fallback) {
 const OFFICE_MD = path.join(WORKSPACE, "OFFICE.md");
 const MEM_DIR = path.join(WORKSPACE, "memory");
 fs.mkdirSync(MEM_DIR, { recursive: true });
+const OFFICE_MD_DEFAULT =
+  "# OFFICE.md — shared office knowledge\n\n" +
+  "(The owner can edit this from the 🗂 NOTES tab. Every agent knows where this " +
+  "file is and reads it only when it's relevant to the work. Write in any language.)\n\n" +
+  "## About the owner\n- \n\n## Office rules\n- \n";
+// English by default (this is a global product); agents may append in any
+// language later. Also migrate the OLD Thai default in place: it's a single
+// shared file regardless of UI language, so when it's still the untouched
+// Thai template we replace it with the English one (never clobber real content).
+const OFFICE_MD_OLD_TH =
+  "# OFFICE.md — ข้อมูลกลางของออฟฟิศ\n\n" +
+  "(เจ้าของแก้ไฟล์นี้ได้จากหน้า 🗂 NOTES — agents ทุกตัวรู้ว่าไฟล์นี้อยู่ที่ไหน " +
+  "และจะเปิดอ่านเมื่อเกี่ยวข้องกับงานเท่านั้น)\n\n" +
+  "## เกี่ยวกับเจ้าของ\n- \n\n## กฎของออฟฟิศ\n- \n";
 if (!fs.existsSync(OFFICE_MD)) {
-  // English by default (this is a global product); agents may append in any
-  // language later — the owner edits it from the 🗂 NOTES tab.
-  fs.writeFileSync(OFFICE_MD,
-    "# OFFICE.md — shared office knowledge\n\n" +
-    "(The owner can edit this from the 🗂 NOTES tab. Every agent knows where this " +
-    "file is and reads it only when it's relevant to the work. Write in any language.)\n\n" +
-    "## About the owner\n- \n\n## Office rules\n- \n");
+  fs.writeFileSync(OFFICE_MD, OFFICE_MD_DEFAULT);
+} else {
+  try {
+    if (fs.readFileSync(OFFICE_MD, "utf8").trim() === OFFICE_MD_OLD_TH.trim())
+      fs.writeFileSync(OFFICE_MD, OFFICE_MD_DEFAULT);
+  } catch {}
 }
 
 // 🌐 Ship pre-translated UI caches: merge daemon/i18n-seed/<lang>.json into the
@@ -513,7 +334,9 @@ if (!fs.existsSync(OFFICE_MD)) {
       let seed = {}, run = {};
       try { seed = JSON.parse(fs.readFileSync(path.join(seedDir, f), "utf8")); } catch {}
       try { run = JSON.parse(fs.readFileSync(path.join(runDir, f), "utf8")); } catch {}
-      fs.writeFileSync(path.join(runDir, f), JSON.stringify({ ...seed, ...run }));
+      const out = path.join(runDir, f), tmp = out + ".tmp";
+      fs.writeFileSync(tmp, JSON.stringify({ ...seed, ...run }));
+      fs.renameSync(tmp, out); // atomic — never leaves a half-written cache
     }
   } catch {}
 })();
@@ -1451,7 +1274,11 @@ function runSub(parentId, subId, taskText, entry, onDone) {
   // Ghosts are short-lived by contract — a stuck one is reaped, its slot
   // reported as failed, so the parent's synthesis always happens.
   const watchdog = setTimeout(() => {
-    try { spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: true }); } catch {}
+    try {
+      if (process.platform === "win32")
+        spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: true });
+      else child.kill("SIGKILL");
+    } catch {}
     finish(false);
   }, 6 * 60000);
   child.stdout.on("data", (c) => {
@@ -1807,22 +1634,51 @@ setInterval(checkUpdate, 6 * 3600000);
 const RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const RUN_NAME = "BagIdeaOffice";
 function shellExePath() {
-  return path.join(__dirname, "..", "shell", "target", "release", "bagidea-office-shell.exe");
+  const exe = process.platform === "win32" ? "bagidea-office-shell.exe" : "bagidea-office-shell";
+  return path.join(__dirname, "..", "shell", "target", "release", exe);
 }
+// macOS: a per-user LaunchAgent, same label the tray's set_autostart writes —
+// both point at the shell binary so the toggle and the tray stay in sync.
+const MAC_PLIST = path.join(require("os").homedir(),
+  "Library", "LaunchAgents", "com.bagidea.office.plist");
 function isAutostart(cb) {
-  if (process.platform !== "win32") return cb(false);
-  require("child_process").execFile("reg", ["query", RUN_KEY, "/v", RUN_NAME],
-    (e) => cb(!e));
+  if (process.platform === "win32") {
+    return require("child_process").execFile("reg",
+      ["query", RUN_KEY, "/v", RUN_NAME], (e) => cb(!e));
+  }
+  if (process.platform === "darwin") return cb(fs.existsSync(MAC_PLIST));
+  return cb(false);
 }
 function setAutostart(on, cb) {
-  if (process.platform !== "win32") return cb(false);
   const { execFile } = require("child_process");
-  if (on) {
-    execFile("reg", ["add", RUN_KEY, "/v", RUN_NAME, "/t", "REG_SZ",
-      "/d", shellExePath(), "/f"], (e) => cb(!e));
-  } else {
-    execFile("reg", ["delete", RUN_KEY, "/v", RUN_NAME, "/f"], () => cb(true));
+  if (process.platform === "win32") {
+    if (on) {
+      execFile("reg", ["add", RUN_KEY, "/v", RUN_NAME, "/t", "REG_SZ",
+        "/d", shellExePath(), "/f"], (e) => cb(!e));
+    } else {
+      execFile("reg", ["delete", RUN_KEY, "/v", RUN_NAME, "/f"], () => cb(true));
+    }
+    return;
   }
+  if (process.platform === "darwin") {
+    try {
+      if (on) {
+        fs.mkdirSync(path.dirname(MAC_PLIST), { recursive: true });
+        fs.writeFileSync(MAC_PLIST,
+          '<?xml version="1.0" encoding="UTF-8"?>\n' +
+          '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n' +
+          '<plist version="1.0"><dict>\n' +
+          '  <key>Label</key><string>com.bagidea.office</string>\n' +
+          '  <key>ProgramArguments</key><array><string>' + shellExePath() + '</string></array>\n' +
+          '  <key>RunAtLoad</key><true/>\n' +
+          '</dict></plist>\n');
+      } else if (fs.existsSync(MAC_PLIST)) {
+        fs.unlinkSync(MAC_PLIST);
+      }
+      return cb(true);
+    } catch { return cb(false); }
+  }
+  cb(false);
 }
 
 // ---------------------------------------------------------------- channels
@@ -2016,12 +1872,19 @@ async function runDiscussion(ids, topic, rounds, social) {
           (transcript ? `Discussion so far:\n${transcript}\n` : "You open the meeting.\n") +
           `Give YOUR next contribution as ${a.name}: concrete, build on the others, ` +
           `max 3 sentences, plain text only, in the same language as the topic.` +
+          `\nถ้าจำเป็นต้องใช้ข้อมูลจริงเพื่อให้ความเห็นแน่นขึ้น คุณค้นเองได้ ` +
+          `(WebSearch / WebFetch / Read) — เฉพาะตอนที่จำเป็นจริงๆ เท่านั้น ไม่ต้องค้นพร่ำเพรื่อ ` +
+          `และตอบกลับเป็นข้อความสนทนาตามปกติ.` +
           (social ? `\nถ้าการคุยตกผลึกเป็นไอเดียโปรเจคที่ทีมอยากสร้างจริง ให้เพิ่มบรรทัดสุดท้าย:\n` +
             `PROPOSAL: <ชื่อโปรเจค> :: <ทำอะไร สั้นๆ>\n` +
             `(ใช้เฉพาะเมื่อไอเดียชัดและคุ้มจริง — เจ้าของจะเป็นคนอนุมัติ).\n` +
-            `กติกาสำคัญ: โปรเจคต้องเป็นงานสร้างสรรค์อิสระ หรือถ้าอยากต่อยอดกับตัวโปรแกรม ` +
-            `BagIdea Office ให้เสนอเป็น "plugin" เท่านั้น (ดู docs/guide/plugins.md) — ` +
-            `ห้ามเสนอแก้ไขระบบหลัก (daemon/godot/shell) ตรงๆ เพราะจะทำให้โปรแกรมพัง` : ""));
+            `อย่าคิดแค่เล็กๆ — นอกจาก plugin เล็กๆ ทีมคิดการใหญ่ได้: เว็บไซต์จริงจัง, เว็บแอป, ` +
+            `โปรแกรมหรือเครื่องมือที่จริงจัง หรือชิ้นงานสร้างสรรค์ที่ทะเยอทะยาน (เป็นโปรเจคอิสระใน workspace). ` +
+            `เลือกขนาดให้เหมาะกับไอเดีย.\n` +
+            `กติกาความปลอดภัยข้อเดียว: ถ้าจะต่อยอดกับตัวโปรแกรม BagIdea Office เองให้เสนอเป็น ` +
+            `"plugin" เท่านั้น (ดู docs/guide/plugins.md) — ห้ามแก้ระบบหลัก (daemon/godot/shell) ตรงๆ ` +
+            `เพราะจะทำให้โปรแกรมพัง. นอกเหนือจากนั้นเป็นโปรเจคอิสระได้เต็มที่` : ""),
+          { tools: "WebSearch,WebFetch,Read,Glob,Grep", env: { OFFICE_AGENT: id, OFFICE_TASK: task } });
         let line = text.split("\n").filter(Boolean).join(" ").slice(0, 500);
         // PROPOSAL: a project pitch for the owner to approve — protocol, not prose.
         const pm = text.match(/PROPOSAL:\s*([^:]+?)\s*::\s*(.+)/);
@@ -3267,6 +3130,19 @@ const server = http.createServer((req, res) => {
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
 
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/i18n/all") {
+    // The whole cached map for a language (seed + anything translated since).
+    // The overlay pulls this once on load so tr() knows every seeded string up
+    // front — no first-switch Thai flash, and strings in NO_I18N subtrees (the
+    // now-strip chrome) can be translated inline too.
+    const L = String((req.url.split("?")[1] || "").replace(/^lang=/, "")).toLowerCase();
+    let map = {};
+    if (L && L !== "th" && /^[a-z]{2}$/.test(L)) {
+      try { map = JSON.parse(fs.readFileSync(path.join(__dirname, "i18n", L + ".json"), "utf8")); } catch {}
+    }
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ map }));
+
   } else if (req.method === "POST" && req.url === "/i18n") {
     // 🌐 auto-translate UI strings to any language via Gemini, cached to
     // disk (daemon/i18n/<lang>.json) so it's instant + shared next time.
@@ -3290,10 +3166,15 @@ const server = http.createServer((req, res) => {
           res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ map: out }));
         };
-        if (!missing.length) return reply();
+        // Reply with whatever's cached RIGHT NOW — never make the overlay wait
+        // on a slow Gemini call for a handful of uncached strings. That used to
+        // block the WHOLE batch, so switching language flashed Thai for seconds
+        // even when ~everything was already seeded. The misses translate in the
+        // background (cached to disk); the overlay's ~1.5s janitor sweep re-asks
+        // and picks them up the moment they're ready.
+        reply();
         const gm = (reg.apiKeys || {}).GEMINI_API_KEY;
-        if (!gm) { res.writeHead(200, { "content-type": "application/json" });
-          return res.end(JSON.stringify({ map: {}, err: "no GEMINI_API_KEY" })); }
+        if (!missing.length || !gm) return;
         const langName = { en: "English", zh: "Simplified Chinese", ja: "Japanese",
           ko: "Korean", es: "Spanish", fr: "French", de: "German", hi: "Hindi",
           ar: "Arabic", pt: "Portuguese", ru: "Russian", id: "Indonesian",
@@ -3302,7 +3183,9 @@ const server = http.createServer((req, res) => {
         const chunks = [];
         for (let i = 0; i < missing.length; i += 60) chunks.push(missing.slice(i, i + 60));
         let pending = chunks.length;
-        const finish = () => { if (--pending <= 0) { fs.writeFileSync(file, JSON.stringify(cache)); reply(); } };
+        const finish = () => { if (--pending <= 0) {
+          try { const tmp = file + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(cache)); fs.renameSync(tmp, file); } catch {}
+        } };
         for (const chunk of chunks) {
           const prompt = `Translate these UI strings from Thai to ${langName}. ` +
             `Keep emoji, symbols, numbers, code and placeholders (like \${...}, <...>) EXACTLY. ` +
@@ -3342,6 +3225,10 @@ const server = http.createServer((req, res) => {
         reg.lang = String(JSON.parse(body).lang || "en").slice(0, 5).toLowerCase();
         saveReg();
         pushRoster();
+        // Tell the wallpaper world to re-pull its status-plate translations so
+        // the 3D office matches the overlay's language live (transient — not
+        // journaled; godot also reads the language on its own startup).
+        broadcast({ type: "ui.lang", lang: reg.lang }, false);
         res.writeHead(200); res.end("ok");
       } catch { res.writeHead(400); res.end("bad json"); }
     });
@@ -3576,6 +3463,21 @@ server.on("upgrade", (req, sock) => {
   }
   // Fresh roster snapshot last — registry.json is the truth, not the journal.
   sock.write(wsFrame(JSON.stringify({ ...rosterEvt(), ts: Date.now() })));
+});
+
+// Resilience: the office is an always-on daemon spawned by a console-less GUI
+// shell, so a single stray exception (a bad scheduler tick, a malformed plugin
+// event) must NOT take the whole office down. Log it and keep serving — the
+// shell's watchdog can still restart us if we ever truly die.
+process.on("uncaughtException", (e) => console.error("[fatal] uncaught:", e && e.stack || e));
+process.on("unhandledRejection", (e) => console.error("[fatal] rejection:", e && e.stack || e));
+
+server.on("error", (e) => {
+  // Most likely EADDRINUSE — another daemon already holds :8787. Exit cleanly
+  // (code 1) so the launcher/watchdog knows not to expect us, instead of a
+  // cryptic unhandled-error crash.
+  console.error("[fatal] server error:", e && e.message || e);
+  process.exit(1);
 });
 
 server.listen(8787, "127.0.0.1", () =>

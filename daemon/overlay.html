@@ -14,7 +14,7 @@
   * { box-sizing: border-box; margin: 0; }
   html { background: #0a111d; }
   body {
-    font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, "Helvetica Neue", "Thonburi", sans-serif;
     background: radial-gradient(1200px 700px at 70% -10%, #14233c 0%, #0a111d 60%, #070b13 100%);
     color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden;
     border: 1px solid rgba(110, 185, 255, 0.35); border-radius: 18px;
@@ -613,7 +613,10 @@
   }
   .field textarea { min-height: 110px; resize: vertical; }
   .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
-  .field select option { background: #131c30; }
+  /* style BOTH option and optgroup — an unstyled optgroup label renders on a
+     white system background (the "เสียงผู้หญิง/ผู้ชาย" headers vanished). */
+  .field select option, .field select optgroup,
+  select option, select optgroup { background: #131c30; color: var(--text); }
   #avGrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; }
   #avGrid .av {
     aspect-ratio: 1; border-radius: 10px; cursor: pointer; background-color: #1c2740;
@@ -989,8 +992,26 @@
       for (const m of muts) for (const nd of m.addedNodes)
         if (nd.nodeType === 1 && !inNoI18n(nd)) applyI18n(nd);
     });
-    addEventListener("DOMContentLoaded", () => {
+    // Pull the whole seeded map for this language ONCE up front, so the very
+    // first paint is already translated (no Thai flash) and tr() knows every
+    // seeded string — including ones in NO_I18N subtrees we translate by hand.
+    async function preloadSeed() {
+      try {
+        const r = await fetch("/i18n/all?lang=" + encodeURIComponent(LANG)).then((x) => x.json());
+        if (r && r.map) {
+          Object.assign(TR, r.map);
+          localStorage.setItem("i18n_" + LANG, JSON.stringify(
+            Object.fromEntries(Object.entries(TR).filter(([k]) => !(DICT[k] && DICT[k][LANG])))));
+        }
+      } catch {}
+    }
+    addEventListener("DOMContentLoaded", async () => {
+      await preloadSeed();
       applyI18n(document.body);
+      // tr()-built chrome (the now-strip) may have rendered from a task event
+      // that beat the async preload — re-render it now that TR is complete, or
+      // a steady "กำลังทำ N งาน" would stay Thai until the next task change.
+      try { renderRunning(); } catch {}
       _obs.observe(document.body, { childList: true, subtree: true });
       setInterval(() => { if (!document.hidden) applyI18n(document.body); }, 1500);
     });
@@ -1668,10 +1689,12 @@
       const latest = items[0];
       const sum = document.createElement("div");
       sum.className = "nowsum";
+      // nowStrip lives in a NO_I18N subtree (its body is live agent content),
+      // so the chrome words won't be auto-translated — do it inline via tr().
       sum.innerHTML = `<span class="dot"></span>` +
-        `<b>กำลังทำ ${items.length} งาน</b>` +
+        `<b>${tr("กำลังทำ %n งาน").replace("%n", items.length)}</b>` +
         `<span class="latest">${nameOf(latest.agent)}: ${(latest.title || "…").replace(/</g, "&lt;")}</span>` +
-        `<span class="caret">${NOW_OPEN ? "▲ พับ" : "▼ ดูทั้งหมด"}</span>`;
+        `<span class="caret">${NOW_OPEN ? tr("▲ พับ") : tr("▼ ดูทั้งหมด")}</span>`;
       sum.onclick = () => { NOW_OPEN = !NOW_OPEN; renderRunning(); };
       box.appendChild(sum);
       const list = document.createElement("div");
@@ -1686,7 +1709,7 @@
         const b = document.createElement("b");
         b.textContent = nameOf(v.agent);
         const s = document.createElement("span");
-        s.textContent = v.title || "กำลังทำงาน…";
+        s.textContent = v.title || tr("กำลังทำงาน…");
         r.append(f, b, s);
         if (box === strip) r.onclick = () => setTarget(v.agent);
         list.appendChild(r);
@@ -1773,7 +1796,22 @@
     [17.3, "🌇 เย็น"],
     [22, "🌙 กลางคืน"],
   ];
+  // Remembered across restarts/updates so the world's atmosphere — and the
+  // checkmark — survive a wiped journal (a fresh install just gets "auto").
   let dayMode = "auto";
+  try { const s = localStorage.getItem("dayMode"); if (s !== null && s !== "") dayMode = s; } catch {}
+  // "auto" hands the clock back to real time; a number pins it. godot needs a
+  // real number ("13" as a string reads as auto there), so coerce here.
+  function pushDaylight(v) {
+    const hour = (v === "auto") ? "auto" : Number(v);
+    fetch("/ui/daylight", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hour }) });
+  }
+  function setDayMode(v) {
+    dayMode = v;
+    try { localStorage.setItem("dayMode", String(v)); } catch {}
+    pushDaylight(v);
+  }
   function renderDayMenu() {
     const m = document.getElementById("dayMenu");
     m.innerHTML = "";
@@ -1783,12 +1821,14 @@
       o.className = "opt" + (active ? " active" : "");
       // ✓ marks the current selection; the others reserve the space so the
       // list stays aligned.
-      o.textContent = (active ? "✓ " : " ") + label;
+      const mark = document.createElement("span");
+      mark.textContent = active ? "✓ " : "  ";  // own span: i18n never eats it
+      const lbl = document.createElement("span");
+      lbl.textContent = label;                   // clean key → hits the seed
+      o.append(mark, lbl);
       o.onclick = () => {
         m.classList.remove("open");
-        dayMode = val;  // reflect immediately so the ✓ is right next open
-        fetch("/ui/daylight", { method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ hour: val }) });
+        setDayMode(val);  // persist + reflect ✓ + tell the world
       };
       m.appendChild(o);
     }
@@ -1820,6 +1860,10 @@
     document.getElementById("dayMenu").classList.toggle("open");
   };
   document.addEventListener("click", () => document.getElementById("dayMenu").classList.remove("open"));
+  // On load, make the world match our remembered choice (or "auto" on a fresh
+  // install). This overrides any stale atmosphere a wiped/old journal replayed —
+  // the symptom was the world stuck on a pinned hour after an update.
+  pushDaylight(dayMode);
 
   // ⋯ overflow menu — holds the secondary tools so the header never overflows
   const moreMenu = document.getElementById("moreMenu");
@@ -2002,7 +2046,7 @@
         <div class="switch ${TTSON ? "on" : ""}" id="ttsSw" style="margin-top:6px">
           <div class="knob"></div> 🗣 Agent voices — เสียงพูดของ agents (ต้องมี Gemini key)</div>
         <div class="switch" id="startupSw" style="margin-top:6px">
-          <div class="knob"></div> 🪟 Start with Windows — เปิดออฟฟิศอัตโนมัติเมื่อเปิดเครื่อง</div>
+          <div class="knob"></div> 🚀 Start at login — เปิดออฟฟิศอัตโนมัติเมื่อเข้าสู่ระบบ</div>
         <div class="field" style="margin-top:8px"><label>💓 DIRECTOR HEARTBEAT — รอบตรวจภาพรวม/ตารางงาน (แจ้งเฉพาะที่ควรรู้)</label>
           <select id="hbSel">
             <option value="0">ปิด</option>
@@ -2030,8 +2074,8 @@
             <option value="f7">F7</option>
             <option value="f8">F8</option>
             <option value="f9">F9</option>
-            <option value="ctrl+space">Ctrl + Space</option>
-            <option value="ctrl+shift+space">Ctrl + Shift + Space</option>
+            <option value="ctrl+space">⌃ Control + Space</option>
+            <option value="ctrl+shift+space">⌃ Control + ⇧ Shift + Space</option>
             <option value="none">ปิดคีย์ลัด</option>
           </select></div>
         <input id="aFilter" class="filterbox" placeholder="🔍 ค้นหา agent…">
@@ -2129,7 +2173,7 @@
           try {
             const r = await api("/startup", { on });
             e.currentTarget.classList.toggle("on", !!r.on);
-            addChip(on ? "🪟 จะเปิดออฟฟิศอัตโนมัติเมื่อเปิดเครื่อง" : "ปิดการเปิดอัตโนมัติแล้ว");
+            addChip(on ? "🚀 จะเปิดออฟฟิศอัตโนมัติเมื่อเข้าสู่ระบบ" : "ปิดการเปิดอัตโนมัติแล้ว");
           } catch { addChip("✗ ตั้งค่าไม่สำเร็จ"); }
         };
       }
@@ -3796,7 +3840,13 @@
       addFeed("main", "🔄 มีเวอร์ชันใหม่ " + (ver ? "v" + ver : "") + " — อัปเดตได้จากแถบในหน้าแชท หรือ `bagidea update`", "");
       return;
     }
-    if (ev.type === "ui.daylight") { dayMode = ev.hour; return; }
+    if (ev.type === "ui.daylight") {
+      // localStorage is authoritative for OUR pick (survives journal wipes); only
+      // adopt the world's replayed value when we've never stored a preference.
+      try { if (localStorage.getItem("dayMode") === null) { dayMode = ev.hour; localStorage.setItem("dayMode", String(ev.hour)); } }
+      catch { dayMode = ev.hour; }
+      return;
+    }
     if (String(ev.type).startsWith("ui.")) return;  // debug beacons aren't agents
     const key = ev.task || ev.agent;
     // Replay Theater is gone — ignore any stale theater frames from old

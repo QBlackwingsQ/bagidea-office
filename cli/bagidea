@@ -181,13 +181,13 @@ async function main() {
     if (!exe) { bad(`shell exe not found — run ${c.accent}cargo build --release${c.reset} in shell/`); return false; }
     spawn(exe, [], { cwd: path.dirname(exe), detached: true, stdio: "ignore" }).unref();
     process.stdout.write(`  ${c.gray}${verb}${c.reset}`);
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 1000));
       process.stdout.write(`${c.gray}.${c.reset}`);
       if (await daemonUp()) { console.log(""); return true; }
     }
     console.log("");
-    warn("Still booting — if the office isn't on screen yet, give it a moment");
+    warn("Started, but the daemon isn't answering yet — check the screen");
     return false;
   };
 
@@ -203,14 +203,10 @@ async function main() {
   }
 
   if (cmd === "restart") {
-    // ALWAYS kill — never gate on /health. A half-dead daemon (process alive
-    // but not answering, or a stale shell holding the single-instance lock)
-    // reports "down", and gating the kill on that left the old shell running
-    // so the fresh one bailed on the single-instance check → nothing restarted.
-    info("Stopping the office…");
-    await killAll();
+    const wasUp = await daemonUp();
+    if (wasUp) { info("Stopping the office…"); await killAll(); }
     // let Windows release the processes + port 8787 before relaunching
-    await new Promise((r) => setTimeout(r, 2500));
+    await new Promise((r) => setTimeout(r, wasUp ? 2500 : 600));
     if (await startOffice("restarting the office")) ok("The office is back 🏢");
     return;
   }
