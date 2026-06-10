@@ -28,6 +28,10 @@ const {
 } = require("./constants");
 
 const WORKSPACE = path.join(__dirname, "..", "workspace");
+// Server-local paths (the refactor moved REPLAY_COUNT to constants.js but these
+// two are used right here — broadcast() journals to JOURNAL, GET / serves OVERLAY).
+const OVERLAY = path.join(__dirname, "overlay.html");
+const JOURNAL = path.join(__dirname, "journal.jsonl");
 
 const wsClients = new Set();
 const pendingPerms = new Map(); // id -> {res, timer, agent, tool}
