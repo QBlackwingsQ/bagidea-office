@@ -7,6 +7,7 @@ extends Node
 const AgentScript := preload("res://scripts/agent_sprite.gd")
 const Fx := preload("res://scripts/fx_factory.gd")
 const Burst := preload("res://scripts/burst_factory.gd")
+const Incident := preload("res://scripts/incident_factory.gd")
 
 @onready var world: Node3D = get_node("../World")
 
@@ -1165,12 +1166,14 @@ func _idle_life_loop() -> void:
 			_act_dance(a)          # a little dance in the rec room
 		elif r < 0.55:
 			_act_stretch(a)        # quick stretch on the spot
-		elif r < 0.80:
+		elif r < 0.78:
 			_act_cafe(a)           # cafe — still the biggest single share
-		elif r < 0.92:
+		elif r < 0.90:
 			_act_chat(a, pool)     # chat with a colleague (anywhere)
-		else:
+		elif r < 0.96:
 			_act_explore(a)        # a rare peek at the server / meeting room
+		else:
+			_act_server_incident(a)  # 🔥 rare server-room emergency — agent rushes to fix
 
 func _act_tv(a: Dictionary) -> void:
 	a.node.set_status(ui("ดูทีวี 📺"))
@@ -1300,6 +1303,39 @@ func _act_chase(a: Dictionary, pool: Array) -> void:
 	if b.node.has_method("set_hurry"): b.node.set_hurry(false)
 	_clear_status_later(a, 5.0)
 	_clear_status_later(b, 5.0)
+
+## 🔥 The server room blows / catches fire and an agent SPRINTS over to put it
+## out — a rare comedic emergency that finally gives the server room a purpose.
+func _act_server_incident(a: Dictionary) -> void:
+	if not is_instance_valid(world) or not world.WP.has("server_c"):
+		_act_explore(a)
+		return
+	var pos: Vector3 = world.WP["server_c"]
+	Incident.boom(world, pos, 1.1)
+	Sfx.play("split")
+	var fire: Node3D = Incident.ignite(world, pos)
+	_focus_kick(a.node, 9.0)
+	a.node.set_status(ui("เซิร์ฟเวอร์ระเบิด! 🔥"))
+	if a.node.has_method("set_hurry"): a.node.set_hurry(true)
+	var d: float = a.node.walk_to(world.path_between(a.node.position, pos + Vector3(1.5, 0, 1.3)), a.node.DIR_UP)
+	await get_tree().create_timer(d + 0.1).timeout
+	# Pulled to real work (or despawned) mid-rush? Just tidy the fire up.
+	if a.state != "idle" or not is_instance_valid(a.node):
+		Incident.put_out(world, fire)
+		return
+	a.node.set_status(ui("กำลังกู้เซิร์ฟเวอร์ 🧯"))
+	for _i in range(3):
+		if a.state != "idle" or not is_instance_valid(a.node):
+			break
+		_fx(a, "sparkle")
+		await get_tree().create_timer(1.0).timeout
+	Incident.put_out(world, fire)
+	if is_instance_valid(a.node):
+		if a.node.has_method("set_hurry"): a.node.set_hurry(false)
+		a.node.set_status(ui("กู้เซิร์ฟเวอร์สำเร็จ ✓"))
+		_fx(a, "check")
+		Sfx.play("blip")
+	_clear_status_later(a, 5.0)
 
 ## A little spot-dance in the rec room.
 func _act_dance(a: Dictionary) -> void:
