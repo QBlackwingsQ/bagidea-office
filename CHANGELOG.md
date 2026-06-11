@@ -4,6 +4,48 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.7.0] — Leaner & smarter: Hermes-style memory + native skills
+
+A big efficiency pass. The office is **exactly as capable** — every feature is
+still here, agents are as smart, and they keep learning — it just uses far fewer
+tokens and stays fast no matter how long it runs. Everything new is reversible
+behind a setting (`retrieval`, `nativeSkills`) and falls back to the old
+behavior if anything goes wrong.
+
+**Added**
+- **Relevance memory (the "Hermes" way).** Instead of pasting an agent's last few
+  memories into every prompt, the office now *retrieves only the memories
+  relevant to the task at hand* — so answers are better-grounded and cheaper.
+- **Per-project memory.** Each project grows its own memory file; agents working
+  in a project recall that project's facts specifically.
+- **Archive search.** A new `archive-search` skill + a `/recall` lookup let
+  agents search past conversations, meetings and notes before answering, instead
+  of guessing. Pure on-device keyword search — no extra API cost.
+- **Chat timestamps.** Every message now shows its date & time.
+- **Click an image to view it full-size**, right inside the chat.
+
+**Changed / Upgraded**
+- **Skills are now delivered natively & on demand.** Agents still learn new
+  skills automatically (nothing about learning changed), but skill instructions
+  are now disclosed only when a skill is actually relevant — they no longer fill
+  up every prompt. Same skills, far less overhead. Skills now also reach resumed
+  sessions and sub-agents (they didn't before).
+- **Lighter team meetings.** Agents discuss using a rolling window of the recent
+  exchange instead of re-reading the entire growing transcript each turn (the
+  full minutes are still saved). This was the single biggest token drain.
+- **Cheaper Director check-ins.** The hourly overview is skipped when nothing has
+  changed since the last one, and the default interval moved 30 → 60 minutes.
+
+**Fixed / Performance**
+- **The activity log no longer grows forever.** `journal.jsonl` is trimmed to a
+  healthy size on startup (it was read in full on every reconnect, which got
+  slow over time), and stale chat threads are pruned — your latest thread per
+  agent is always kept.
+- Overall: dramatically fewer tokens spent during autonomous agent-to-agent
+  chatter, delegation and idle check-ins.
+
+**Removed** — nothing. All features are intact.
+
 ## [0.6.4] — Director's desk + Thai in the Security Center
 
 - **Fixed — agents stopped stealing the Director's desk.** Freed desks were
@@ -68,6 +110,7 @@ in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
 *Earlier history predates this changelog — see `git log` for the full record.*
 
+[0.7.0]: https://github.com/bagidea/bagidea-office/releases/tag/v0.7.0
 [0.6.4]: https://github.com/bagidea/bagidea-office/releases/tag/v0.6.4
 [0.6.3]: https://github.com/bagidea/bagidea-office/releases/tag/v0.6.3
 [0.6.2]: https://github.com/bagidea/bagidea-office/releases/tag/v0.6.2
