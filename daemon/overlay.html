@@ -1551,30 +1551,33 @@
   // ---- global voice-command hotkey (F6): JS owns the toggle — press =
   // record, press again = transcribe + send STRAIGHT through the CEO seat.
   // Works identically in normal / mini / feed mode.
-  window.pttToggle = () => {
-    if (_rec) {
-      (async () => {
-        const val = await voiceFinish();
-        if (!val) return;
-        pillShow("🎤 " + val.slice(0, 90), "ส่งแล้ว ✓", false);
-        setTimeout(pillHide, 2400);
-        // A spoken command is a REAL chat message: in normal mode the pane
-        // jumps to the CEO seat and the words land as your bubble (with a
-        // voice badge); feed mode mirrors it into the stream. Either way it
-        // is in the Director's thread history forever.
-        if (document.body.classList.contains("feedmode")) {
-          addFeed("ceo", "🎤 " + val, "", "");
-        } else {
-          if (target !== "ceo") setTarget("ceo");
-          addMsg("you voice", null, val);
-        }
-        await fetch("/chat", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ agent: "ceo", prompt: val, voice: true }),
-        });
-        refreshThreadBar();
-      })();
-    } else voiceBegin("F6 = หยุดและส่ง");
+  // Finish recording → transcribe → send as a real CEO chat message.
+  async function _pttSend() {
+    const val = await voiceFinish();
+    if (!val) return;
+    pillShow("🎤 " + val.slice(0, 90), "ส่งแล้ว ✓", false);
+    setTimeout(pillHide, 2400);
+    // A spoken command is a REAL chat message: in normal mode the pane jumps to
+    // the CEO seat and the words land as your bubble (with a voice badge); feed
+    // mode mirrors it into the stream. Either way it lives in the thread history.
+    if (document.body.classList.contains("feedmode")) {
+      addFeed("ceo", "🎤 " + val, "", "");
+    } else {
+      if (target !== "ceo") setTarget("ceo");
+      addMsg("you voice", null, val);
+    }
+    await fetch("/chat", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ agent: "ceo", prompt: val, voice: true }),
+    });
+    refreshThreadBar();
+  }
+  // Click the mic button = toggle (press to start, press to send).
+  window.pttToggle = () => { if (_rec) _pttSend(); else voiceBegin("กดอีกครั้ง / ปล่อยปุ่มเพื่อส่ง"); };
+  // Hold-to-talk from the global hotkey: key DOWN starts, key UP sends.
+  window.pttSet = (on) => {
+    if (on) { if (!_rec) voiceBegin("ปล่อยปุ่มเพื่อส่ง"); }
+    else if (_rec) _pttSend();
   };
   // Tell the shell which chord to listen for (persisted per machine).
   function pttKey() {
