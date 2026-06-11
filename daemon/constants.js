@@ -152,6 +152,18 @@ const SKILL_LIBRARY = {
       "4. Follow it with a 2-3 line plain-language reading of the diagram.",
     ].join("\n"),
   },
+  "archive-search": {
+    name: "Archive Search",
+    description: "Search the office's past memory, meetings and notes before answering — recall, don't guess.",
+    content: [
+      "Before answering from memory or assuming, search what the office already knows:",
+      "1. Run: curl -s 'http://127.0.0.1:8787/recall?q=<url-encoded keywords>&k=8'",
+      "2. The JSON 'hits' are the most relevant past facts/notes/meeting snippets, each",
+      "   tagged with a tier (mem/proj/user/arch) and a relevance score.",
+      "3. Use them as grounding; if a hit points to a file, Read it for the full text.",
+      "4. Recall first, then reason — never invent facts the office may already hold.",
+    ].join("\n"),
+  },
 };
 
 const DEFAULT_MAIN_AGENT = {
@@ -209,7 +221,7 @@ const DEFAULT_MAIN_AGENT = {
       "DON'T create a project or take a destructive or owner-reserved action the CEO hasn't asked for.",
     ].join("\n"),
   },
-  skills: ["office-ops", "plugin-builder", "project-kickoff"],
+  skills: ["office-ops", "plugin-builder", "project-kickoff", "archive-search"],
   tools: ["Read", "Bash", "WebSearch", "WebFetch"],
 };
 

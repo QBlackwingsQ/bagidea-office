@@ -27,6 +27,7 @@ const {
   DEFAULT_CEO_AGENT
 } = require("./constants");
 const maintenance = require("./maintenance");
+const retrieval = require("./retrieval");
 
 const WORKSPACE = path.join(__dirname, "..", "workspace");
 // Server-local paths (the refactor moved REPLAY_COUNT to constants.js but these
@@ -374,8 +375,37 @@ function memAppend(agent, facts) {
   if (!fresh.length) return;
   if (!cur) cur = `# ความจำของ ${agent}\n\n`;
   fs.appendFileSync(file, fresh.map((f) => `- ${f}`).join("\n") + "\n");
+  // Keep the retrieval index in step with the new facts (no-op until P1 init).
+  try { if (retrievalOk) { retrieval.reindexFile("mem", path.basename(file, ".md"), file); retrieval.persist(); } } catch {}
   broadcast({ type: "memory.learned", agent, count: fresh.length }, false);
 }
+
+// ---- retrieval index (P1) -------------------------------------------------
+// Relevance lookup over memory / project / owner / skill / meeting-archive, so
+// agents can recall only what's relevant instead of dumping everything. Built
+// from the office's own files on boot; fail-open (retrievalOk stays false on
+// any error and every consumer falls back to today's behavior).
+let retrievalOk = false;
+const RETRIEVAL_INDEX = path.join(WORKSPACE, "index", "retrieval.json");
+try {
+  retrieval.init({
+    indexFile: RETRIEVAL_INDEX,
+    memDir: MEM_DIR,
+    officeMd: OFFICE_MD,
+    projectsDir: path.join(WORKSPACE, "projects"),
+    meetingsDir: path.join(WORKSPACE, "meetings"),
+    skills: reg.skills,
+  });
+  retrievalOk = true;
+  console.log("[retrieval]", JSON.stringify(retrieval.stats()));
+} catch (e) { console.error("[retrieval] init:", e.message); }
+// Self-heal when the owner edits OFFICE.md outside the daemon.
+try {
+  fs.watchFile(OFFICE_MD, { interval: 5000 }, () => {
+    if (!retrievalOk) return;
+    try { retrieval.reindexFile("user", "OFFICE", OFFICE_MD); retrieval.persist(); } catch {}
+  });
+} catch {}
 // The note every fresh session carries — pointers + a short tail, never the
 // whole archive.
 function memoryNote(agent) {
@@ -1948,6 +1978,7 @@ async function runDiscussion(ids, topic, rounds, social) {
         `- Participants: ${names}\n\n## Transcript\n\n` +
         entry.log.map((m) => `**${(reg.agents[m.who] || { name: m.who }).name}**: ${m.text}`).join("\n\n") + "\n";
       fs.writeFileSync(path.join(dir, `${entry.key}.md`), md);
+      try { if (retrievalOk) { retrieval.addDoc("arch", "meeting", `arch:meeting:${entry.key}`, md.slice(0, 1200)); retrieval.persist(); } } catch {}
     } catch {}
   }
 }
@@ -2157,6 +2188,18 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify(reg));
 
+  } else if (req.method === "GET" && req.url.startsWith("/recall")) {
+    // Relevance search over the office's memory / projects / owner facts /
+    // skills / meeting archive. Read-only; the archive-search skill curls this.
+    const u = new URL(req.url, "http://x");
+    const q = u.searchParams.get("q") || "";
+    const k = Math.min(20, Math.max(1, parseInt(u.searchParams.get("k") || "8", 10) || 8));
+    const tiers = (u.searchParams.get("tiers") || "").split(",").filter(Boolean);
+    let hits = [];
+    try { if (retrievalOk) hits = retrieval.search(q, { k, tiers: tiers.length ? tiers : undefined }); } catch {}
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ q, hits, stats: retrievalOk ? retrieval.stats() : null }));
+
   } else if (req.method === "POST" && req.url === "/registry/agent") {
     // Create or update an agent. Protected rows (main/ceo) accept edits but
     // never deletion; id is derived from the name on first save.
@@ -2241,6 +2284,14 @@ const server = http.createServer((req, res) => {
           };
         }
         saveReg();
+        // Keep the retrieval index's skill tier in step with the edit.
+        try {
+          if (retrievalOk) {
+            if (p.remove) retrieval.removeDoc("skill:" + p.id);
+            else { const sid = p.id || slugId(p.name); retrieval.reindexSkill(sid, reg.skills[sid]); }
+            retrieval.persist();
+          }
+        } catch {}
         pushRoster();
         res.writeHead(200);
         res.end("ok");
@@ -3540,6 +3591,7 @@ server.on("error", (e) => {
   process.exit(1);
 });
 
-server.listen(8787, "127.0.0.1", () =>
-  console.log("[oep] http+ws listening :8787")
+const OEP_PORT = process.env.OEP_PORT || 8787;  // override only for isolated tests
+server.listen(OEP_PORT, "127.0.0.1", () =>
+  console.log(`[oep] http+ws listening :${OEP_PORT}`)
 );
