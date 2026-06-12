@@ -441,6 +441,14 @@
   /* timestamp under each chat message */
   .msgtime { font-size: 10px; opacity: 0.42; margin-top: 3px; letter-spacing: 0.2px; }
   .msg.you .msgtime { text-align: right; }
+  /* native date/time pickers: dark color-scheme so the calendar icon is light
+     (it was a dark icon lost on the dark input) and the popup renders on-theme. */
+  input[type="datetime-local"], input[type="date"], input[type="time"] { color-scheme: dark; }
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.9) brightness(1.6); opacity: 0.95; cursor: pointer;
+  }
   /* full-size image viewer (click an image in chat) */
   #lightbox {
     position: fixed; inset: 0; z-index: 9999; display: none;
