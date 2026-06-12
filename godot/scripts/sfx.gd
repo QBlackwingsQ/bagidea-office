@@ -19,6 +19,9 @@ const PACK_MAP := {
 	"door_out": "Door Close 4-1.wav",       # off to the bunks
 	"page": "Book Page 1-2.wav",            # notes & paperwork
 	"split": "Fire Whoosh 2-15.wav",        # 💥 the clone burst
+	"boom": "Explosion Large 1-1.wav",      # 💥 server-room blast (the big one)
+	"boom2": "Explosion Medium 2-1.wav",    # 💥 the second, smaller pop
+	"fire": "Fire Burning Loop 2.wav",      # 🔥 crackle as the room catches
 }
 
 var enabled := true

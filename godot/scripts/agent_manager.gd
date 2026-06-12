@@ -1274,26 +1274,32 @@ func _act_chase(a: Dictionary, pool: Array) -> void:
 	if others.is_empty():
 		return
 	var b: Dictionary = others.pick_random()
-	a.node.set_status(ui("ไล่จับเพื่อน 🏃💨"))
-	b.node.set_status(ui("หนีสุดชีวิต 😆"))
-	# Both actually SPRINT (work-run pace), not stroll — and re-home on the
-	# runner every beat so it reads as a real cross-room chase.
 	if a.node.has_method("set_hurry"): a.node.set_hurry(true)
 	if b.node.has_method("set_hurry"): b.node.set_hurry(true)
+	# A beat of anticipation — they spot each other, THEN bolt. (Re-targeting on a
+	# fixed short timer used to kill each walk mid-stride → a jittery shuffle.)
+	a.node.set_status(ui("เห็นแล้วนะ 👀"))
+	b.node.set_status(ui("จะหนีแล้ว! 😆"))
 	_maybe_focus(a.node, 0.85, 9.0)
-	for i in range(6):
+	await get_tree().create_timer(0.6).timeout
+	if a.state == "idle" and b.state == "idle" and is_instance_valid(a.node) and is_instance_valid(b.node):
+		a.node.set_status(ui("ไล่จับเพื่อน 🏃💨"))
+		b.node.set_status(ui("หนีสุดชีวิต 😆"))
+	for i in range(5):
 		if a.state != "idle" or b.state != "idle" or not is_instance_valid(a.node) or not is_instance_valid(b.node):
 			break
 		# Runner bolts to a FAR spot — across rooms, through doorways (A* routed).
 		var away: Vector3 = b.node.position - a.node.position
 		away = (Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized()
 			if away.length() < 0.1 else away.normalized())
-		var flee: Vector3 = _clamp_floor(b.node.position + away * randf_range(6.0, 11.0))
-		b.node.walk_to(world.path_between(b.node.position, flee))
+		var flee: Vector3 = _clamp_floor(b.node.position + away * randf_range(7.0, 11.0))
+		var db: float = b.node.walk_to(world.path_between(b.node.position, flee))
 		# Chaser homes on the runner's current position — closing the gap.
-		a.node.walk_to(world.path_between(a.node.position, b.node.position))
+		var da: float = a.node.walk_to(world.path_between(a.node.position, b.node.position))
 		if i % 2 == 0: _fx(b, "music")   # comic puffs as they tear around
-		await get_tree().create_timer(0.85).timeout
+		# Let the dash actually PLAY OUT before re-targeting — re-home at ~80% of
+		# the longer leg so it stays a continuous sprint, never a twitch-in-place.
+		await get_tree().create_timer(clampf(max(da, db) * 0.8, 0.9, 2.2)).timeout
 	# Caught! a little burst of fun.
 	if is_instance_valid(a.node) and is_instance_valid(b.node):
 		_fx(a, "sparkle"); _fx(b, "sparkle")
@@ -1311,17 +1317,40 @@ func _act_server_incident(a: Dictionary) -> void:
 		_act_explore(a)
 		return
 	var pos: Vector3 = world.WP["server_c"]
-	Incident.boom(world, pos, 1.1)
-	Sfx.play("split")
-	var fire: Node3D = Incident.ignite(world, pos)
-	_focus_kick(a.node, 9.0)
+	# Point the camera at the server room FIRST — the blast used to fire wherever
+	# the camera happened NOT to be, so it was easy to miss. A temp marker gives
+	# the rig something to frame; we free it when the drama ends.
+	var mark := Node3D.new()
+	world.add_child(mark)
+	mark.position = pos + Vector3(0, 1.0, 0)
+	var rig := get_node_or_null("../CameraRig")
+	if rig and rig.has_method("focus_on"):
+		rig.focus_on(mark, 12.0)
+		_focus_cd = Time.get_ticks_msec() / 1000.0 + 18.0  # don't let ambient focus steal it
+	await get_tree().create_timer(0.9).timeout  # camera settles, tension builds
+	if not is_instance_valid(world): return
+	# 💥💥 two blasts, then it catches fire — distinct explosion SFX each.
+	Incident.boom(world, pos, 1.35)
+	Sfx.play("boom")
+	await get_tree().create_timer(0.7).timeout
+	if is_instance_valid(world):
+		Incident.boom(world, pos + Vector3(randf_range(-1.2, 1.2), 0, randf_range(-1.0, 1.0)), 1.0)
+		Sfx.play("boom2")
+	await get_tree().create_timer(0.35).timeout
+	var fire: Node3D = Incident.ignite(world, pos) if is_instance_valid(world) else null
+	Sfx.play("fire")
+	if not is_instance_valid(a.node):
+		if fire: Incident.put_out(world, fire)
+		if is_instance_valid(mark): mark.queue_free()
+		return
 	a.node.set_status(ui("เซิร์ฟเวอร์ระเบิด! 🔥"))
 	if a.node.has_method("set_hurry"): a.node.set_hurry(true)
 	var d: float = a.node.walk_to(world.path_between(a.node.position, pos + Vector3(1.5, 0, 1.3)), a.node.DIR_UP)
 	await get_tree().create_timer(d + 0.1).timeout
-	# Pulled to real work (or despawned) mid-rush? Just tidy the fire up.
+	# Pulled to real work (or despawned) mid-rush? Just tidy up.
 	if a.state != "idle" or not is_instance_valid(a.node):
-		Incident.put_out(world, fire)
+		if fire: Incident.put_out(world, fire)
+		if is_instance_valid(mark): mark.queue_free()
 		return
 	a.node.set_status(ui("กำลังกู้เซิร์ฟเวอร์ 🧯"))
 	for _i in range(3):
@@ -1329,12 +1358,13 @@ func _act_server_incident(a: Dictionary) -> void:
 			break
 		_fx(a, "sparkle")
 		await get_tree().create_timer(1.0).timeout
-	Incident.put_out(world, fire)
+	if fire: Incident.put_out(world, fire)
+	if is_instance_valid(mark): mark.queue_free()
 	if is_instance_valid(a.node):
 		if a.node.has_method("set_hurry"): a.node.set_hurry(false)
 		a.node.set_status(ui("กู้เซิร์ฟเวอร์สำเร็จ ✓"))
 		_fx(a, "check")
-		Sfx.play("blip")
+		Sfx.play("chime")
 	_clear_status_later(a, 5.0)
 
 ## A little spot-dance in the rec room.
