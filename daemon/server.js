@@ -2164,6 +2164,13 @@ const server = http.createServer((req, res) => {
     });
     res.end(fs.readFileSync(OVERLAY));
 
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/watch") {
+    // Read-only live activity stream for an agent (opened as its own window) —
+    // it only listens on the WS, never sends, so it can't disturb the agent.
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    try { res.end(fs.readFileSync(path.join(__dirname, "watch.html"))); }
+    catch { res.end("<p>watch unavailable</p>"); }
+
   } else if (req.method === "GET" && /^\/brand\/logo[a-z_]*\.png$/.test(req.url)) {
     const f = path.join(__dirname, "..", "godot", "assets", "brand", req.url.split("/").pop());
     fs.readFile(f, (e, data) => {

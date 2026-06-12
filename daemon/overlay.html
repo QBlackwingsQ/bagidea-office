@@ -3287,10 +3287,17 @@
             <div class="winbtn" title="เปิดโฟลเดอร์">📂</div>
             <div class="winbtn hide" title="เอาออกจากรายการ (ไฟล์ยังอยู่)">✕</div>` +
             (p.created
-              ? `<div class="winbtn hide" title="ลบโปรเจคออกจากเครื่องจริงๆ">🗑</div>` : "");
+              ? `<div class="winbtn hide" title="ลบโปรเจคออกจากเครื่องจริงๆ">🗑</div>` : "") +
+            (p.ai && shellPost
+              ? `<div class="winbtn" title="ดูน้องทำงาน (หน้าต่างแยก · ไม่รบกวน)">👁</div>` : "");
           const b = [...row.querySelectorAll(".winbtn")];
           const refresh = () => setTimeout(opsRefresh, 2600);
           const metaSpan = () => row.querySelector(".meta span");
+          // 👁 watch — pop a read-only live stream of this project's agent(s).
+          const watchBtn = row.querySelector('[title="ดูน้องทำงาน (หน้าต่างแยก · ไม่รบกวน)"]');
+          if (watchBtn) watchBtn.onclick = () =>
+            shellPost("open-window:/watch?agents=" + encodeURIComponent((p.agents || []).join(",")) +
+              "&title=" + encodeURIComponent(p.name));
           if (p.ai) {
             // Two-click confirm: first arms the button, second stops the agent.
             let armed = false;
