@@ -2879,6 +2879,7 @@
     const r = await fetch("/plugins").then((x) => x.json()).catch(() => ({ plugins: [] }));
     modalCard.innerHTML = hdr("🧩 PLUGINS") +
       `<div style="font-size:11px;color:var(--dim);margin-bottom:10px">ส่วนขยายของออฟฟิศ — คลิกเพื่อเปิดแผง · agents สั่งงาน plugin เหล่านี้ได้</div>
+       <input id="plgFilter" class="filterbox" placeholder="🔍 ค้นหา plugin…" style="margin-bottom:6px">
        <div id="plgList"></div>
        <div class="field" style="margin-top:12px"><label>📦 ติดตั้ง plugin จากลิงก์ GitHub (ง่ายสุด)</label>
          <div class="assistrow">
@@ -2914,6 +2915,7 @@
       if (del) del.onclick = () => api("/plugins/remove", { id: p.id }).then(() => openPlugins());
       box.appendChild(row);
     }
+    wireFilter(modalCard.querySelector("#plgFilter"), box);
     modalCard.querySelector("#plgReload").onclick = () =>
       api("/plugins/reload", {}).then(() => openPlugins());
     modalCard.querySelector("#plgInstall").onclick = async () => {
