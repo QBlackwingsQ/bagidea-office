@@ -81,11 +81,20 @@
 
   function boot() {
     const host = document.getElementById("sponsorWall");
-    if (!host) return;
-    fetch("sponsors.json", { cache: "no-cache" })
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((data) => render(data, host))
-      .catch(() => { /* leave the hardcoded fallback in place */ });
+    if (host)
+      fetch("sponsors.json", { cache: "no-cache" })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((data) => render(data, host))
+        .catch(() => { /* leave the hardcoded fallback in place */ });
+
+    // Keep the "Latest: vX.Y.Z" badge in sync with the live VERSION on main, so
+    // a release never needs a manual web edit. Falls back to the hardcoded value.
+    const ver = document.getElementById("latestVer");
+    if (ver)
+      fetch("https://raw.githubusercontent.com/bagidea/bagidea-office/main/VERSION", { cache: "no-cache" })
+        .then((r) => (r.ok ? r.text() : Promise.reject(r.status)))
+        .then((v) => { const t = (v || "").trim(); if (/^\d+\.\d+\.\d+/.test(t)) ver.textContent = "v" + t; })
+        .catch(() => { /* keep the fallback */ });
   }
 
   if (document.readyState === "loading")
