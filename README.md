@@ -88,6 +88,16 @@ BagIdea Office is built in the open and kept free to run. Sponsors make that pos
 
 Every sponsor — at any tier — gets a clickable link to their site or socials, and is shown on the website (sorted by contribution, amounts never displayed).
 
+### How sponsoring works
+
+Sponsorship is a **recurring monthly subscription handled entirely by GitHub Sponsors** (think YouTube/Patreon membership) — secure payments, taxes and payouts are GitHub's job, not ours.
+
+1. **Choose a tier & sponsor.** Click **[💖 Sponsor on GitHub](https://github.com/sponsors/bagidea)** (or use the button on the [website](https://bagidea.com/#sponsors)), pick a monthly tier, and confirm. GitHub charges you each month until you cancel.
+2. **Your logo & link come from your GitHub profile — automatically.** Your avatar, display name, and link are pulled straight from your GitHub account; there is **nothing to send us**. To control the link, set the **Website** field in your GitHub profile (*Settings → Public profile*). Sponsoring as a **GitHub Organization** shows your company logo and site instead of a personal avatar.
+3. **You appear within ~6 hours.** As long as you choose **“Make my sponsorship public”** at checkout, an automated job ([`.github/workflows/sponsors.yml`](.github/workflows/sponsors.yml)) pulls the live sponsor list, maps each to a tier by amount, and updates both this README and the website supporters wall — sorted by tier, **amounts never shown**. Private sponsors are respected and simply not listed.
+
+> **Everyone joins through GitHub Sponsors.** The only exceptions are featured partners we add by hand (e.g. **WARRIX**, pinned first) in [`web/sponsors.manual.json`](web/sponsors.manual.json). **Reuannamphung** is shown there as a courtesy until they move to GitHub Sponsors. Maintainers: never hand-edit `web/sponsors.json` (it is generated) — edit `sponsors.manual.json` for off-platform sponsors only.
+
 **[💖 Sponsor on GitHub →](https://github.com/sponsors/bagidea)** · or **[email us →](mailto:wrxbgid@warrix.co.th?subject=BagIdea%20Office%20Sponsorship)** to talk.
 
 ---
