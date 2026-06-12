@@ -1,8 +1,10 @@
 # Godot editor/import cache
 godot/.godot/
-# Godot-generated .uid sidecars (regenerated on import; resources resolve by
-# path, so these don't need tracking — keeps `git status` clean after imports)
+# Godot-generated import sidecars (.uid + .import) — regenerated on import/launch
+# (the project resolves resources by path and rebuilds the import cache), so they
+# don't need tracking and would only churn. Keeps `git status` clean after imports.
 *.uid
+*.import
 
 # Rust build artifacts
 shell/target/
