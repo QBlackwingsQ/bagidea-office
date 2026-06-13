@@ -794,6 +794,7 @@
 <!-- ⋯ overflow menu: secondary tools, so the header never overflows -->
 <div id="moreMenu">
   <div class="opt" id="pluginBtn">🧩 <span>Plugins</span></div>
+  <div class="opt" id="workflowBtn">🔀 <span>Workflow Builder</span></div>
   <div class="opt" id="editBtn">🎨 <span>จัดออฟฟิศ</span></div>
   <div class="opt" id="discussBtn">🗣 <span>ประชุม agents</span></div>
   <div class="opt" id="mapBtn">🗺 <span>แผนที่</span></div>
@@ -2905,6 +2906,11 @@
 
   // ---- 🧩 plugins: list + open a plugin's panel inside the modal -----------
   document.getElementById("pluginBtn").onclick = () => openPlugins();
+  // 🔀 human-language Workflow Builder — its own resizable window
+  document.getElementById("workflowBtn").onclick = () => {
+    document.getElementById("moreMenu").classList.remove("open");
+    popWindow("/workflow", "🔀 Workflow Builder", "workflow", { w: 1120, h: 740 });
+  };
   // 🎨 opens the full standalone 3D editor window (the daemon launches Godot).
   document.getElementById("editBtn").onclick = () => {
     api("/editor/open", {});

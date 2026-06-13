@@ -104,6 +104,25 @@ function staffCount() {
   return Object.keys(reg.agents).filter((k) => k !== "ceo").length;
 }
 
+// ---- Workflow Builder (human-language nodes the Director analyzes) ----------
+// Flow is read top→bottom by node Y on the canvas, so no explicit edges needed.
+function workflowToText(w) {
+  const nodes = (w.nodes || []).slice().sort((a, b) => (a.y || 0) - (b.y || 0));
+  let s = `Workflow: ${w.name || "(untitled)"}\nSteps (in order):\n`;
+  nodes.forEach((n, i) => { s += `${i + 1}. [${n.type || "step"}] ${(n.text || "").trim()}\n`; });
+  return s;
+}
+const WORKFLOW_ANALYZE_PROMPT = [
+  "ผู้ใช้วาง workflow เป็นภาษามนุษย์ (ลำดับ node) ด้านล่าง. ในฐานะ Director ให้วิเคราะห์",
+  "ว่าจะทำให้เกิดจริงได้ยังไง — อย่าลงมือทำตอนนี้ แค่วางแผน. ตอบเป็นหัวข้อ กระชับ",
+  "อ่านง่าย ภาษาเดียวกับผู้ใช้:",
+  "1) สรุป 1-2 บรรทัดว่า workflow นี้ทำอะไร",
+  "2) แต่ละขั้นต้องใช้ skill/tool ไหน (เช่น WebSearch, Bash, Write) — ถ้ายังไม่มี skill ที่เหมาะ บอกว่าควรสร้าง skill ชื่ออะไร ทำอะไร",
+  "3) ต้องเปิด permission/tool อะไรเพิ่มให้ agent ไหม",
+  "4) ควรมอบหมายให้ agent คนไหน หรือควรจ้าง agent ใหม่ (หน้าที่อะไร)",
+  "5) คำถาม/ช่องโหว่ที่ผู้ใช้ต้องตัดสินใจก่อนรันจริง",
+].join("\n");
+
 // Which program features the MAIN keys currently unlock — booleans only,
 // never the keys themselves. Rides on roster.sync so the UI gates live.
 function featuresMap() {
@@ -2274,6 +2293,12 @@ const server = http.createServer((req, res) => {
     try { res.end(fs.readFileSync(path.join(__dirname, "watch.html"))); }
     catch { res.end("<p>watch unavailable</p>"); }
 
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/workflow") {
+    // The human-language Workflow Builder canvas (opened as its own window).
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+    try { res.end(fs.readFileSync(path.join(__dirname, "workflow.html"))); }
+    catch { res.end("<p>workflow builder unavailable</p>"); }
+
   } else if (req.method === "GET" && /^\/brand\/logo[a-z_]*\.png$/.test(req.url)) {
     const f = path.join(__dirname, "..", "godot", "assets", "brand", req.url.split("/").pop());
     fs.readFile(f, (e, data) => {
@@ -3426,6 +3451,57 @@ const server = http.createServer((req, res) => {
         res.writeHead(200); res.end("ok");
       } catch { res.writeHead(400); res.end("bad json"); }
     });
+
+  } else if (req.method === "GET" && req.url === "/workflows") {
+    const dir = path.join(WORKSPACE, "workflows");
+    let list = [];
+    try {
+      list = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).map((f) => {
+        try { const w = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+          return { id: f.replace(/\.json$/, ""), name: w.name || f, nodes: (w.nodes || []).length }; }
+        catch { return null; }
+      }).filter(Boolean);
+    } catch {}
+    res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(list));
+
+  } else if (req.method === "GET" && req.url.startsWith("/workflows/get")) {
+    const id = (new URL(req.url, "http://x").searchParams.get("id") || "").replace(/[^\w-]/g, "");
+    try { res.writeHead(200, { "content-type": "application/json" });
+      res.end(fs.readFileSync(path.join(WORKSPACE, "workflows", id + ".json"))); }
+    catch { res.writeHead(404); res.end("{}"); }
+
+  } else if (req.method === "POST" && req.url === "/workflows/save") {
+    readBody(req, (body) => { try {
+      const w = JSON.parse(body || "{}");
+      const id = String(w.id || ("wf_" + Date.now())).replace(/[^\w-]/g, "");
+      const dir = path.join(WORKSPACE, "workflows"); fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, id + ".json"),
+        JSON.stringify({ id, name: w.name || "Workflow", nodes: w.nodes || [], edges: w.edges || [] }, null, 2));
+      res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ id }));
+    } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
+
+  } else if (req.method === "POST" && req.url === "/workflows/delete") {
+    readBody(req, (body) => { try {
+      const id = String(JSON.parse(body || "{}").id || "").replace(/[^\w-]/g, "");
+      if (id) fs.unlinkSync(path.join(WORKSPACE, "workflows", id + ".json"));
+    } catch {} res.writeHead(200); res.end("ok"); });
+
+  } else if (req.method === "POST" && req.url === "/workflows/analyze") {
+    // The Director reads the human-language workflow and returns a plan (which
+    // skills/tools/agents/permissions it needs). P1: plan only, never auto-runs.
+    readBody(req, (body) => { try {
+      const w = JSON.parse(body || "{}");
+      queueDirectorTurn((release) => {
+        runClaude("main", WORKFLOW_ANALYZE_PROMPT + "\n\n" + workflowToText(w), {
+          logPrompt: "🔀 วิเคราะห์ workflow: " + (w.name || ""),
+          onDone: (out, ok) => {
+            release();
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ ok: !!ok, analysis: ok && out ? out : "วิเคราะห์ไม่สำเร็จ ลองใหม่อีกครั้ง" }));
+          },
+        });
+      });
+    } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
 
   } else if (req.method === "POST" && req.url === "/event") {
     readBody(req, (body) => {

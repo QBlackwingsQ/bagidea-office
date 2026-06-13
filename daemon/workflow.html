@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workflow Builder — BagIdea Office</title>
+<style>
+  :root { --bg:#0a111d; --card:#0e1626; --line:rgba(255,255,255,.10); --accent:#5ec8ff; --text:#e8eef6; --dim:#90a0b6; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font:13px/1.5 -apple-system,Segoe UI,Roboto,"Noto Sans Thai",sans-serif; overflow:hidden; }
+  /* signature slim blue-glass scrollbar */
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:rgba(94,200,255,.35); border-radius:8px; }
+  ::-webkit-scrollbar-thumb:hover { background:rgba(94,200,255,.55); }
+  #bar { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line);
+    background:#0c1322; position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+  #bar input#name { background:#0a1020; border:1px solid var(--line); color:var(--text); border-radius:8px;
+    padding:6px 10px; font-size:13px; min-width:180px; }
+  button { background:#13203a; color:var(--text); border:1px solid var(--line); border-radius:8px;
+    padding:6px 12px; cursor:pointer; font-size:12px; font-weight:600; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  button.primary { background:#0e4d8c; border-color:rgba(94,200,255,.5); }
+  button.primary:hover { background:#1466b3; color:#fff; }
+  .grow { flex:1; }
+  #wrap { display:flex; height:calc(100% - 49px); }
+  #canvas { position:relative; flex:1; overflow:auto; background:
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,.05) 1px, transparent 0) 0 0/22px 22px; }
+  #hint { position:absolute; top:8px; left:50%; transform:translateX(-50%); color:var(--dim);
+    font-size:11px; pointer-events:none; opacity:.7; }
+  .node { position:absolute; width:230px; background:var(--card); border:1px solid var(--line);
+    border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.35); }
+  .node .head { display:flex; align-items:center; gap:6px; padding:7px 9px; cursor:grab;
+    border-bottom:1px solid var(--line); border-radius:12px 12px 0 0; background:#101c30; }
+  .node .head select { background:#0a1020; color:var(--text); border:1px solid var(--line);
+    border-radius:6px; font-size:11px; padding:2px 4px; }
+  .node .head .x { margin-left:auto; cursor:pointer; color:var(--dim); padding:0 4px; }
+  .node .head .x:hover { color:#ff7b7b; }
+  .node textarea { width:100%; border:0; background:transparent; color:var(--text); resize:vertical;
+    min-height:54px; padding:9px; font:13px/1.45 inherit; outline:none; }
+  .node .num { font-size:10px; color:var(--accent); font-weight:800; }
+  #side { width:320px; border-left:1px solid var(--line); background:#0c1322; padding:12px;
+    overflow:auto; display:flex; flex-direction:column; gap:8px; }
+  #side h3 { margin:0 0 2px; font-size:13px; }
+  #plan { white-space:pre-wrap; font-size:12.5px; color:#d6e2f0; background:#0a1020;
+    border:1px solid var(--line); border-radius:10px; padding:11px; min-height:80px; }
+  #side .muted { color:var(--dim); font-size:11px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; }
+  select#wfopen { background:#0a1020; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 8px; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <input id="name" placeholder="ชื่อ workflow…" value="Workflow ใหม่">
+    <button onclick="addNode()">＋ Node</button>
+    <select id="wfopen" onchange="if(this.value)loadWf(this.value)"><option value="">📂 เปิด…</option></select>
+    <span class="grow"></span>
+    <button onclick="saveWf()">💾 บันทึก</button>
+    <button class="primary" onclick="analyze()">🔍 วิเคราะห์</button>
+  </div>
+  <div id="wrap">
+    <div id="canvas">
+      <div id="hint">ลากการ์ดเพื่อจัดเรียง · ลำดับการทำงาน = บนลงล่าง · พิมพ์คำสั่งเป็นภาษามนุษย์ในแต่ละ node</div>
+    </div>
+    <div id="side">
+      <h3>🤖 แผนจาก Director</h3>
+      <div class="muted">กด “วิเคราะห์” แล้ว Director จะอ่าน workflow นี้ บอกว่าต้องใช้ skill/tool/permission อะไร และควรมอบหมายให้ใคร (ยังไม่ลงมือทำจริง)</div>
+      <div id="plan">— ยังไม่มีการวิเคราะห์ —</div>
+    </div>
+  </div>
+<script>
+  const TYPES = [["trigger","⚡ เริ่มเมื่อ"],["fetch","⬇ ดึงข้อมูล"],["action","⚙ ทำงาน"],
+    ["decision","◆ ตัดสินใจ"],["output","📤 ส่งผล"],["note","📝 โน้ต"]];
+  let nodes = [];        // {id,type,text,x,y}
+  let curId = "";        // loaded workflow id ("" = new)
+  let seq = 1;
+  const canvas = document.getElementById("canvas");
+
+  function nodeEl(n) {
+    const el = document.createElement("div");
+    el.className = "node"; el.style.left = (n.x||40)+"px"; el.style.top = (n.y||60)+"px"; el.dataset.id = n.id;
+    const opts = TYPES.map(([v,l])=>`<option value="${v}"${v===n.type?" selected":""}>${l}</option>`).join("");
+    el.innerHTML = `<div class="head"><span class="num"></span><select>${opts}</select><span class="x">✕</span></div>
+      <textarea placeholder="พิมพ์สิ่งที่อยากให้ทำ…">${(n.text||"").replace(/</g,"&lt;")}</textarea>`;
+    el.querySelector("select").onchange = (e)=>{ n.type = e.target.value; };
+    el.querySelector("textarea").oninput = (e)=>{ n.text = e.target.value; };
+    el.querySelector(".x").onclick = ()=>{ nodes = nodes.filter(x=>x.id!==n.id); el.remove(); renumber(); };
+    dragify(el, n);
+    canvas.appendChild(el);
+    return el;
+  }
+  function dragify(el, n) {
+    const head = el.querySelector(".head");
+    head.onmousedown = (e) => {
+      if (e.target.tagName === "SELECT" || e.target.classList.contains("x")) return;
+      e.preventDefault();
+      const sx = e.clientX, sy = e.clientY, ox = parseInt(el.style.left), oy = parseInt(el.style.top);
+      const move = (ev) => {
+        n.x = Math.max(0, ox + ev.clientX - sx); n.y = Math.max(0, oy + ev.clientY - sy);
+        el.style.left = n.x+"px"; el.style.top = n.y+"px";
+      };
+      const up = () => { document.removeEventListener("mousemove",move); document.removeEventListener("mouseup",up); renumber(); };
+      document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
+    };
+  }
+  function renumber() {
+    const sorted = nodes.slice().sort((a,b)=>(a.y||0)-(b.y||0));
+    sorted.forEach((n,i)=>{ const el=[...canvas.querySelectorAll(".node")].find(e=>e.dataset.id===n.id);
+      if (el) el.querySelector(".num").textContent = (i+1); });
+  }
+  function addNode(type, text, x, y) {
+    const n = { id:"n"+(seq++), type:type||"action", text:text||"",
+      x: x!=null?x: 40 + (nodes.length%3)*250, y: y!=null?y: 60 + Math.floor(nodes.length/3)*150 };
+    nodes.push(n); nodeEl(n); renumber();
+  }
+  function saveWf() {
+    const body = { id: curId || undefined, name: document.getElementById("name").value || "Workflow", nodes };
+    fetch("/workflows/save", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body) })
+      .then(r=>r.json()).then(j=>{ curId=j.id; flash("💾 บันทึกแล้ว"); refreshList(); }).catch(()=>flash("บันทึกไม่สำเร็จ"));
+  }
+  function analyze() {
+    if (!nodes.length) return flash("เพิ่ม node ก่อนนะ");
+    const plan = document.getElementById("plan");
+    plan.textContent = "⏳ Director กำลังวิเคราะห์…";
+    fetch("/workflows/analyze", { method:"POST", headers:{"content-type":"application/json"},
+      body: JSON.stringify({ name: document.getElementById("name").value, nodes }) })
+      .then(r=>r.json()).then(j=>{ plan.textContent = j.analysis || "—"; }).catch(()=>{ plan.textContent="วิเคราะห์ไม่สำเร็จ ลองใหม่"; });
+  }
+  function loadWf(id) {
+    fetch("/workflows/get?id="+encodeURIComponent(id)).then(r=>r.json()).then(w=>{
+      canvas.querySelectorAll(".node").forEach(e=>e.remove());
+      nodes = w.nodes || []; curId = w.id || id; document.getElementById("name").value = w.name || "Workflow";
+      seq = nodes.length + 1; nodes.forEach(nodeEl); renumber();
+    });
+  }
+  function refreshList() {
+    fetch("/workflows").then(r=>r.json()).then(list=>{
+      const sel = document.getElementById("wfopen");
+      sel.innerHTML = '<option value="">📂 เปิด…</option>' +
+        list.map(w=>`<option value="${w.id}"${w.id===curId?" selected":""}>${w.name} (${w.nodes})</option>`).join("");
+    });
+  }
+  function flash(t){ const p=document.getElementById("plan"); const o=p.textContent; p.textContent=t; setTimeout(()=>{ if(p.textContent===t)p.textContent=o; },1500); }
+
+  // seed a starter workflow so the canvas isn't empty
+  addNode("trigger","เมื่อสั่งให้เริ่ม…");
+  addNode("action","ให้ทำอะไร…");
+  addNode("output","ส่งผลลัพธ์ไปที่…");
+  refreshList();
+</script>
+</body>
+</html>
