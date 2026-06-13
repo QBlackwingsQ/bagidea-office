@@ -357,6 +357,21 @@ if (!fs.existsSync(OFFICE_MD)) {
   } catch {}
 }
 
+// 🔀 First run: drop example workflows into workspace/workflows so users have
+// something to open + learn from. Seeds ONLY when the folder is empty — never
+// overwrites the user's own workflows.
+(function seedWorkflowExamples() {
+  try {
+    const dir = path.join(WORKSPACE, "workflows");
+    fs.mkdirSync(dir, { recursive: true });
+    if (fs.readdirSync(dir).some((f) => f.endsWith(".json"))) return;
+    const src = path.join(__dirname, "workflow-examples");
+    for (const f of fs.readdirSync(src))
+      if (f.endsWith(".json")) fs.copyFileSync(path.join(src, f), path.join(dir, f));
+    console.log("[workflows] seeded example workflows");
+  } catch {}
+})();
+
 // 🌐 Ship pre-translated UI caches: merge daemon/i18n-seed/<lang>.json into the
 // runtime cache (daemon/i18n/) on startup, so the UI shows in the chosen
 // language even with NO Gemini key. Runtime entries win (they may be newer or
