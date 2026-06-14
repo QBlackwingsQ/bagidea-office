@@ -625,13 +625,19 @@ mod platform {
             position_wallpaper(godot, &root);
             let _ = proxy.send_event(UserEvent::WorldReady);
 
-            // Re-pin watcher (issue #7): a desktop click can pop our window out
-            // of WorkerW (reparented or hidden), so the office vanishes until a
-            // manual Hide-toggle / restart. Re-assert parent + visibility when it
-            // drifts — cheap (a no-op while everything is fine).
-            use windows_sys::Win32::UI::WindowsAndMessaging::{GetParent, IsWindow};
+            // Re-pin watcher (issue #7): a desktop click can pop our window out of
+            // WorkerW. It happens three ways — reparented, hidden, OR (the sneaky
+            // one) shoved DOWN the z-order so it's buried behind the desktop while
+            // GetParent + IsWindowVisible still look fine. So besides re-parenting
+            // / re-showing on drift, we pin it to the BOTTOM of the z-order every
+            // tick (cheap, no-op when already there, never steals focus). Respects
+            // the user's intentional Hide-office.
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                GetParent, IsWindow, SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE,
+                SWP_NOSIZE, SW_SHOWNA,
+            };
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(1200));
+                std::thread::sleep(std::time::Duration::from_millis(700));
                 if IsWindow(godot) == 0 {
                     break; // renderer gone — stop watching
                 }
@@ -643,11 +649,16 @@ mod platform {
                 if ww == 0 as HWND {
                     continue;
                 }
-                if GetParent(godot) != ww || IsWindowVisible(godot) == 0 {
+                if GetParent(godot) != ww {
                     SetParent(godot, ww);
-                    ShowWindow(godot, SW_SHOW);
                     position_wallpaper(godot, &root);
                 }
+                if IsWindowVisible(godot) == 0 {
+                    ShowWindow(godot, SW_SHOWNA); // re-show without stealing focus
+                }
+                // Keep it the backmost layer of WorkerW so a desktop click can't
+                // bury it (and SWP_NOACTIVATE so it never grabs the foreground).
+                SetWindowPos(godot, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
         });
     }
