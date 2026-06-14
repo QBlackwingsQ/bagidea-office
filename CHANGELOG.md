@@ -4,6 +4,27 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.7.8] — Visual Workflow canvas, Tools Hub & a wallpaper-stability fix
+
+**Fixed**
+- **Wallpaper no longer vanishes on Win+D / desktop click.** A v0.7.7 change
+  (multi-monitor repositioning + a re-pin watcher) regressed the embed on some
+  setups, making the office disappear when showing the desktop. Reverted to the
+  original rock-solid embed; the monitor reposition now only runs when you've
+  explicitly picked a monitor. **Recommended update for anyone on v0.7.7.**
+
+**Added**
+- **🔀 Workflow Builder is now a real graph canvas** (n8n-style): pan, zoom,
+  draw arrows between nodes, **branch one→many (parallel) and merge many→one
+  (wait for all)** — not just a top-to-bottom list. The Director's analysis
+  understands the branches and merges.
+- **🧰 Tools Hub** (⋯ menu → Tools Hub): a one-click MCP-server catalog —
+  **Browser automation (Playwright)** so agents can open & drive a real browser
+  for you, plus Web Fetch, Filesystem, GitHub, Slack, Google Workspace.
+- **Bundled CLI tools** for agents: the installer now sets up `gh`, `ffmpeg`,
+  `yt-dlp`, `jq`, `pandoc` and ImageMagick (best-effort), widening what the
+  office can actually do.
+
 ## [0.7.7] — Workflow Builder, louder channels & a sturdier wallpaper
 
 A big update — a whole new way to plan work, channels that talk back, and fixes
