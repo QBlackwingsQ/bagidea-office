@@ -4,6 +4,13 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.7.21] — More of the UI ships pre-translated
+
+**Changed**
+- **Newer screens now ship pre-translated** in all 14 languages — the Plugins Hub,
+  the display menu, the confirm dialogs and more show in your language instantly,
+  instead of waiting for on-the-fly translation the first time.
+
 ## [0.7.20] — Workflow Builder polish & friendlier scrolling
 
 **Fixed**
