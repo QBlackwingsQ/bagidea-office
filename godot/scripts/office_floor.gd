@@ -75,7 +75,7 @@ func _ready() -> void:
 		# the fake beam cards carry the god-ray look on their own.
 		env.volumetric_fog_enabled = false
 		# Shadow atlas: the orthogonal map is fit to the whole view frustum (up to
-		# directional_shadow_max_distance ≈ 90, which must cover the office at the
+		# directional_shadow_max_distance = 100, which must cover the office at the
 		# far wallpaper camera or shadows vanish entirely when zoomed out). Spread
 		# over that large area, 4096 read soft/faint at normal zoom — 8192 packs
 		# enough texels to stay CRISP at the far camera, the same way the map
