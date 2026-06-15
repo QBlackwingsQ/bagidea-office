@@ -47,6 +47,7 @@
 <body>
 <div class="wrap">
   <h1>🧩 Plugins Hub</h1>
+  <div id="intent"></div>
   <div class="intro" id="intro"></div>
   <div id="installed"></div>
   <div id="available"></div>
@@ -69,6 +70,7 @@
       none:"ยังไม่มี plugin ในแคตตาล็อก",
       tInstalling:"📦 กำลังติดตั้ง…", tInstalled:"✅ ติดตั้งแล้ว", tInstallErr:"ติดตั้งไม่สำเร็จ",
       tRemoved:"ถอนการติดตั้งแล้ว", tCopied:"📋 คัดลอกลิงก์แล้ว — วางในหน้า Plugins ของออฟฟิศได้เลย",
+      intentTitle:"ติดตั้ง plugin นี้?", intentBody:"คุณกดติดตั้งจากหน้าเว็บ — plugin รันโค้ดจริงบนเครื่องคุณ ติดตั้งเฉพาะตัวที่ไว้ใจ", intentYes:"⬇ ติดตั้ง", intentNo:"ยกเลิก",
     },
     en: {
       whatTitle:"What is a plugin?",
@@ -83,6 +85,7 @@
       none:"No plugins in the catalog yet",
       tInstalling:"📦 Installing…", tInstalled:"✅ Installed", tInstallErr:"Install failed",
       tRemoved:"Uninstalled", tCopied:"📋 Link copied — paste it in the office Plugins panel.",
+      intentTitle:"Install this plugin?", intentBody:"You requested this from the web — a plugin runs real code on your machine. Only install ones you trust.", intentYes:"⬇ Install", intentNo:"Cancel",
     },
   };
   const SUBMIT_URL = "https://github.com/bagidea/bagidea-office/blob/main/docs/guide/plugin-hub.md";
@@ -147,7 +150,7 @@
       installed = {};
       for (const p of (plg.plugins || [])) installed[p.id] = { core: !!p.core };
       catalog = (cat.plugins || []).filter((p) => p && p.id && p.repo);
-      intro(); render();
+      intro(); render(); intentBanner();
     });
   }
   function install(id) {
@@ -174,6 +177,37 @@
     (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject())
       .then(() => toast(UI[L].tCopied))
       .catch(() => { prompt(UI[L].copy, url); });
+  }
+  // A bagidea:// "install" deep link arrives as ?install=<repo>. Show a confirm
+  // banner up top — the user must approve before any code is cloned & run.
+  function intentBanner() {
+    const m = location.search.match(/[?&]install=([^&]+)/);
+    const box = document.getElementById("intent");
+    if (!m) { box.innerHTML = ""; return; }
+    let repo = ""; try { repo = decodeURIComponent(m[1]); } catch (e) { repo = m[1]; }
+    if (!/^https:\/\/[\w.-]+\/[\w.\-/]+$/.test(repo)) { box.innerHTML = ""; return; }
+    const u = UI[L];
+    box.innerHTML =
+      `<div class="card" style="border-color:rgba(94,200,255,.5)">
+         <div class="top"><h3>${u.intentTitle}</h3></div>
+         <p style="word-break:break-all"><b>${esc(repo)}</b></p>
+         <p style="color:#e6b873">${u.intentBody}</p>
+         <div class="row">
+           <button class="add" id="intentYes">${u.intentYes}</button>
+           <button class="ghost" id="intentNo">${u.intentNo}</button>
+         </div></div>`;
+    document.getElementById("intentYes").onclick = () => { box.innerHTML = ""; installUrl(repo); };
+    document.getElementById("intentNo").onclick = () => { box.innerHTML = ""; history.replaceState(null, "", location.pathname); };
+  }
+  function installUrl(repo) {
+    toast(UI[L].tInstalling);
+    fetch("/plugins/install", {
+      method: "POST", headers: { "content-type": "application/json", "x-bagidea-ui": "1" },
+      body: JSON.stringify({ url: repo }),
+    }).then(async (r) => {
+      if (r.ok) { toast(UI[L].tInstalled); history.replaceState(null, "", location.pathname); refresh(); }
+      else toast(UI[L].tInstallErr + " — " + (await r.text()).slice(0, 90));
+    }).catch(() => toast(UI[L].tInstallErr));
   }
   let tid;
   function toast(t){ const e=document.getElementById("toast"); e.textContent=t; e.classList.add("show"); clearTimeout(tid); tid=setTimeout(()=>e.classList.remove("show"),3000); }

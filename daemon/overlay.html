@@ -1935,6 +1935,11 @@
       addFeed(ev.agent, "💡 ทีมเสนอโปรเจคใหม่: " + ev.name + " — รออนุมัติใน 🗂 TASKS", "", "alert");
     else if (ev.type === "memory.learned")
       addFeed(ev.agent, "🧠 จดความจำใหม่ " + ev.count + " ข้อ", "");
+    else if (ev.type === "plugin.intent" && ev.repo) {
+      // A bagidea:// "install" deep link reached the office. Open the Plugins Hub
+      // window pre-loaded with this repo for a CONFIRM-then-install — never silent.
+      popWindow("/pluginshub?install=" + encodeURIComponent(ev.repo), "🧩 Plugins Hub", "pluginshub", { w: 880, h: 720 });
+    }
   }
 
   function addPermCard(ev) {

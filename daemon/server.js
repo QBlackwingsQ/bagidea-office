@@ -3281,6 +3281,22 @@ const server = http.createServer((req, res) => {
       } catch (e) { res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(String(e.message)); }
     });
 
+  } else if (req.method === "POST" && req.url === "/plugins/intent") {
+    // A bagidea:// deep link (from the web Plugins page) asking to install a
+    // plugin. We do NOT install here — we broadcast an intent so the OFFICE asks
+    // the user to confirm first. A web page must never silently install code.
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        let repo = String(JSON.parse(body || "{}").repo || "").trim();
+        if (!/^https:\/\/(github\.com|gitlab\.com|[\w.-]+)\/[\w.\-/]+$/.test(repo))
+          throw new Error("bad repo url");
+        broadcast({ type: "plugin.intent", repo }, false);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
   } else if (req.method === "POST" && req.url === "/plugins/remove") {
     readBody(req, (body) => {
       try {

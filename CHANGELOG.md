@@ -4,6 +4,15 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.7.16] — One-click install straight from the website
+
+**Added**
+- **Install from the web with one click.** The “Open in office” button on a plugin’s
+  web page now hands the install straight to your running office through a
+  `bagidea://` link. The office always **asks you to confirm first** — a web page
+  can never install code silently — and the copy-link fallback still works if the
+  office isn’t open.
+
 ## [0.7.15] — Plugins Hub: a community catalog you can install in one click
 
 **Added**
