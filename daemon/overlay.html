@@ -796,6 +796,7 @@
   <div class="opt" id="pluginBtn">🧩 <span>Plugins</span></div>
   <div class="opt" id="workflowBtn">🔀 <span>Workflow Builder</span></div>
   <div class="opt" id="toolshubBtn">🧰 <span>Tools Hub</span></div>
+  <div class="opt" id="pluginshubBtn">🧩 <span>Plugins Hub</span></div>
   <div class="opt" id="editBtn">🎨 <span>จัดออฟฟิศ</span></div>
   <div class="opt" id="discussBtn">🗣 <span>ประชุม agents</span></div>
   <div class="opt" id="mapBtn">🗺 <span>แผนที่</span></div>
@@ -952,6 +953,7 @@
     // plugins panel
     "ส่วนขยายของออฟฟิศ — คลิกเพื่อเปิดแผง · agents สั่งงาน plugin เหล่านี้ได้": { en: "Office extensions — click to open a panel · agents can drive these plugins", zh: "办公室扩展 — 点击打开面板 · 代理可控制这些插件", ja: "オフィス拡張 — クリックでパネルを開く · エージェントが操作可能" },
     "ยังไม่มี plugin": { en: "No plugins yet", zh: "暂无插件", ja: "プラグインはまだありません" },
+    "🧩 เรียกดู Plugins Hub (ชุมชน) — กดติดตั้งทีเดียว": { en: "🧩 Browse the Plugins Hub (community) — one-click install", zh: "🧩 浏览插件中心（社区）— 一键安装", ja: "🧩 プラグインハブを見る（コミュニティ）— ワンクリックでインストール" },
     "โหลด plugins ใหม่": { en: "Reload plugins", zh: "重新加载插件", ja: "プラグインを再読み込み" },
     "เปิดแผง": { en: "Open panel", zh: "打开面板", ja: "パネルを開く" },
     "คำสั่ง": { en: "commands", zh: "命令", ja: "コマンド" },
@@ -2938,6 +2940,11 @@
     document.getElementById("moreMenu").classList.remove("open");
     popWindow("/toolshub", "🧰 Tools Hub", "toolshub", { w: 860, h: 720 });
   };
+  // 🧩 Plugins Hub — community plugin catalog, one-click install, its own window
+  document.getElementById("pluginshubBtn").onclick = () => {
+    document.getElementById("moreMenu").classList.remove("open");
+    popWindow("/pluginshub", "🧩 Plugins Hub", "pluginshub", { w: 880, h: 720 });
+  };
   // 🎨 opens the full standalone 3D editor window (the daemon launches Godot).
   document.getElementById("editBtn").onclick = () => {
     api("/editor/open", {});
@@ -2947,7 +2954,8 @@
     modal.classList.add("open");
     const r = await fetch("/plugins").then((x) => x.json()).catch(() => ({ plugins: [] }));
     modalCard.innerHTML = hdr("🧩 PLUGINS") +
-      `<div style="font-size:11px;color:var(--dim);margin-bottom:10px">ส่วนขยายของออฟฟิศ — คลิกเพื่อเปิดแผง · agents สั่งงาน plugin เหล่านี้ได้</div>
+      `<div style="font-size:11px;color:var(--dim);margin-bottom:8px">ส่วนขยายของออฟฟิศ — คลิกเพื่อเปิดแผง · agents สั่งงาน plugin เหล่านี้ได้</div>
+       <button class="bigbtn" id="plgHub" style="margin-bottom:10px">🧩 เรียกดู Plugins Hub (ชุมชน) — กดติดตั้งทีเดียว</button>
        <input id="plgFilter" class="filterbox" placeholder="🔍 ค้นหา plugin…" style="margin-bottom:6px">
        <div id="plgList"></div>
        <div class="field" style="margin-top:12px"><label>📦 ติดตั้ง plugin จากลิงก์ GitHub (ง่ายสุด)</label>
@@ -2959,6 +2967,8 @@
            หรือวางโฟลเดอร์เองใน <code>plugins/</code> แล้วกด 🔄 · เขียน plugin เอง: docs/guide/plugins.md</div>
        </div>
        <button class="bigbtn" id="plgReload">🔄 โหลด plugins ใหม่</button>`;
+    modalCard.querySelector("#plgHub").onclick = () =>
+      popWindow("/pluginshub", "🧩 Plugins Hub", "pluginshub", { w: 880, h: 720 });
     const box = modalCard.querySelector("#plgList");
     if (!(r.plugins || []).length)
       box.innerHTML = `<div style="font-size:11.5px;color:var(--dim)">ยังไม่มี plugin</div>`;

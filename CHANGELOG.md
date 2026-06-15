@@ -4,6 +4,19 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.7.15] — Plugins Hub: a community catalog you can install in one click
+
+**Added**
+- **Plugins Hub.** A curated catalog of community plugins — browse them and install
+  into your running office with a single click. Open it from **⋯ → 🧩 Plugins Hub**
+  (or the button in the Plugins panel). The catalog is fetched live, so newly
+  approved plugins show up without an app update.
+- **A public Plugins page on the website** to discover plugins, copy an install
+  link, and learn how to publish your own.
+- **Anyone can submit a plugin.** Publish it as a GitHub repo, then open a PR adding
+  it to the catalog — every submission is reviewed (plugins run real code on a
+  user's machine). See `docs/guide/plugin-hub.md`.
+
 ## [0.7.14] — Safer deletes & clearing team proposals
 
 **Changed**
