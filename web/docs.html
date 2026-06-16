@@ -45,6 +45,7 @@
     <a href="#voice" data-i18n="dn_voice">Voice & channels</a>
     <a href="#updates" data-i18n="dn_updates">Updates & start-up</a>
     <h4 data-i18n="dn_features">More</h4>
+    <a href="#brains" data-i18n="dn_brains">Swappable brains</a>
     <a href="#plugins" data-i18n="dn_plugins">Plugins & skills</a>
     <a href="#workflow" data-i18n="dn_workflow">Workflow Builder</a>
     <a href="#lang" data-i18n="dn_lang">Languages</a>
@@ -140,6 +141,16 @@ bagidea start   # launch the office</code></pre>
 
     <h3 id="updates" data-i18n="d_updates_h">Updates &amp; start-up</h3>
     <p data-i18n="d_updates_p">A VERSION file marks real releases: the office only shows the 🔄 update banner when main's version is newer than yours, so routine commits never nag you. Click the banner or run bagidea update to pull, rebuild and relaunch (your data is kept). Set it to launch with Windows from the tray, settings, or bagidea startup on.</p>
+
+    <h2 id="brains" data-i18n="d_brain_h">Swappable brains (any model)</h2>
+    <p data-i18n-html="d_brain_p">Run each agent on its own model. Claude Code stays the engine — only the brain behind it swaps, and it fails open to Claude, so nothing changes until you opt an agent in. Two kinds: <b>direct</b> Anthropic-compatible (Claude, GLM, DeepSeek, Qwen, MiniMax), and OpenAI-compatible <b>via a built-in zero-dependency proxy</b> (OpenAI, Gemini, OpenRouter, NVIDIA, and your own custom providers) — no LiteLLM or Python to install.</p>
+    <img src="img/brains-connect.png" alt="Connect providers in CONNECT → MODELS/PROVIDERS">
+    <img src="img/swappable-brains.png" alt="Pick a provider and model per agent, with a context-usage meter">
+    <p data-i18n-html="d_brain_setup"><b>Set it up:</b> ⚙ CONNECT → 🧠 MODELS/PROVIDERS → paste a key → Connect (✅). Then ✏️ edit an agent → 🧠 Brain → pick provider + model (a working default is auto-selected) → Save.</p>
+    <p data-i18n-html="d_brain_free"><b>Free to try, with limits:</b> NVIDIA build is free but rate-limited (~40 req/min); OpenRouter has free <code>:free</code> models that are daily-capped (use <code>vendor/model</code> ids); Gemini has a generous free quota; OpenAI Tier 1 (30k tokens/min) is small for heavy agent work.</p>
+    <p data-i18n-html="d_brain_compact"><b>Auto-compact + auto-new-thread — for every model.</b> Long chats never clog: before each turn the office measures the thread against the model's context window and, if it's filling up, summarizes it with Claude and continues on a fresh thread — recovering the same way if a backend rejects a too-big request. Continuity is preserved (the summary is Claude-written) and the view follows you to the new thread.</p>
+    <p data-i18n-html="d_brain_monitor"><b>Monitor it:</b> every message is tagged with its model, the thread bar shows a live context meter (e.g. <code>gpt-4o · 40k/128k</code>), the 🧠 BRAINS panel tracks every provider + agent, and STATS estimates per-provider spend.</p>
+    <img src="img/brains-chat.png" alt="Chat tagged with the model and a context-usage meter in the thread bar">
 
     <h2 id="plugins" data-i18n="d_plugins_h">Plugins, skills & tools</h2>
     <p data-i18n="d_plugins_p">Plugins extend the office for real — a folder with a manifest can add UI panels, HTTP routes, and commands agents can drive, with ctx access to the registry, feed, broadcasting and even running Claude turns. Two core plugins ship in the box (🎵 Music Player, 🧮 Calculator); install more from any GitHub repo. Start from the official template, or read the worked example repos.</p>
