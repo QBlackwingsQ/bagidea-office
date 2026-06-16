@@ -4739,10 +4739,12 @@
     }
     else if (ev.type === "thread.switch") {
       // Auto-compact / recovery moved this agent's work onto a fresh thread. If the
-      // user is watching this agent's old thread directly, follow them across so the
-      // live conversation keeps showing — instead of a pane that looks stuck.
-      if (!ev.replay && ev.agent === target && !groupView &&
-          (CUR[target] === ev.from || !CUR[target])) {
+      // user is watching this conversation (incl. the CEO pane, which shows main),
+      // follow across so the live reply / report-back keeps showing — instead of a
+      // pane that looks stuck while the answer lands on an unseen thread.
+      const watching = !groupView &&
+        (ev.agent === target || (target === "ceo" && ev.agent === "main"));
+      if (!ev.replay && watching && (CUR[target] === ev.from || !CUR[target])) {
         SESS[target] = ev.to;
         CUR[target] = ev.to;
         addChip(tr("🧵 บทสนทนายาวขึ้น — ย้ายไป thread ใหม่ (auto-compact)"));

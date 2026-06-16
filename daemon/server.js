@@ -1437,19 +1437,27 @@ function brainLabel(agent) {
 // thread.switch event moves a direct viewer there (so they don't sit on a dead thread
 // watching nothing happen). Shared by proactive compaction + reactive recovery.
 async function restartOnFreshThread(agent, prompt, opts, oldEntry, notice, flag) {
-  const brief = await summarizeThread(oldEntry);
-  const retryPrompt = brief
-    ? `<previously-in-this-thread>\n${brief}\n</previously-in-this-thread>\n\n${prompt}`
-    : prompt;
-  const origOnEntry = opts.onEntry;
-  runClaude(agent, retryPrompt, {
-    ...opts, session: "new", _notice: notice, [flag]: true,
-    onEntry: (newKey) => {
-      // Tell the overlay to follow this agent's conversation to the new thread.
-      broadcast({ type: "thread.switch", agent, from: oldEntry.key, to: newKey });
-      if (origOnEntry) try { origOnEntry(newKey); } catch {}
-    },
-  });
+  console.error(`[brain] ${flag} ${agent}: summarizing + restarting on a fresh thread`);
+  try {
+    const brief = await summarizeThread(oldEntry);
+    const retryPrompt = brief
+      ? `<previously-in-this-thread>\n${brief}\n</previously-in-this-thread>\n\n${prompt}`
+      : prompt;
+    const origOnEntry = opts.onEntry;
+    runClaude(agent, retryPrompt, {
+      ...opts, session: "new", _notice: notice, [flag]: true,
+      onEntry: (newKey) => {
+        // Tell the overlay to follow this agent's conversation to the new thread.
+        broadcast({ type: "thread.switch", agent, from: oldEntry.key, to: newKey });
+        if (origOnEntry) try { origOnEntry(newKey); } catch {}
+      },
+    });
+  } catch (e) {
+    // Never strand the caller: a delegation's report-back rides on opts.onDone, so if
+    // the restart itself fails, surface a failure rather than going silent forever.
+    console.error(`[brain] ${flag} ${agent} restart FAILED:`, e && e.message);
+    if (opts.onDone) try { opts.onDone(`(auto-compact failed: ${e && e.message})`, false); } catch {}
+  }
 }
 
 // PROACTIVE compaction (see runClaude / overBudget): the thread is near this backend's
