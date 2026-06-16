@@ -1,6 +1,22 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { toOpenAI, toAnthropic, pickModel, upstreamFor, UPSTREAM } = require("../proxy");
+const { toOpenAI, toAnthropic, pickModel, upstreamFor, streamAnthropic, UPSTREAM } = require("../proxy");
+
+test("streamAnthropic emits a well-formed Anthropic SSE sequence (text + tool_use)", () => {
+  const w = [];
+  const res = { writeHead() {}, write(s) { w.push(s); }, end() {}, writableEnded: false };
+  streamAnthropic(res, { id: "m", model: "gpt-4o", stop_reason: "tool_use",
+    usage: { input_tokens: 5, output_tokens: 3 },
+    content: [{ type: "text", text: "hi there" }, { type: "tool_use", id: "t1", name: "get_weather", input: { city: "BKK" } }] });
+  const s = w.join("");
+  for (const ev of ["event: message_start", "event: content_block_start", "text_delta",
+                    "input_json_delta", "event: message_delta", "event: message_stop"]) {
+    assert.ok(s.includes(ev), "missing " + ev);
+  }
+  assert.ok(s.includes("hi there"));
+  assert.ok(s.includes("get_weather"));
+  assert.ok(s.includes("tool_use"));
+});
 
 test("toOpenAI: system + user text → system + user messages", () => {
   const o = toOpenAI({ system: "You are X", messages: [{ role: "user", content: "hi" }] }, "gpt-4o");

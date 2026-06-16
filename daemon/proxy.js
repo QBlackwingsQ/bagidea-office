@@ -124,106 +124,85 @@ function pickModel(reqModel, fallback) {
   return (!m || /^claude/i.test(m)) ? (fallback || m) : m;
 }
 
-async function handle(req, res, provider, reg, raw) {
-  const { chat, key, fallbackModel } = upstreamFor(provider, reg);
-  if (!chat) {
-    res.writeHead(404, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ type: "error",
-      error: { type: "not_found_error", message: `no endpoint configured for provider "${provider}"` } }));
-  }
-  if (!key) {
-    res.writeHead(400, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ type: "error",
-      error: { type: "authentication_error", message: `key not set for "${provider}" — add it in ⚙ CONNECT` } }));
-  }
-  let a;
-  try { a = JSON.parse(raw); } catch { res.writeHead(400); return res.end("bad json"); }
-  const model = pickModel(a.model, fallbackModel);
-  const body = toOpenAI(a, model);
+// Synthesise an Anthropic SSE stream from a COMPLETE translated message. We buffer
+// the upstream (no live SSE delta translation — that was fragile across providers)
+// then replay it as the exact Anthropic event sequence claude expects.
+function streamAnthropic(res, msg) {
+  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+  const u = msg.usage || {};
+  sse(res, "message_start", { type: "message_start", message: {
+    id: msg.id, type: "message", role: "assistant", model: msg.model, content: [],
+    stop_reason: null, stop_sequence: null,
+    usage: { input_tokens: u.input_tokens || 0, output_tokens: 0,
+      cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } });
+  (msg.content || []).forEach((block, i) => {
+    if (block.type === "text") {
+      sse(res, "content_block_start", { type: "content_block_start", index: i, content_block: { type: "text", text: "" } });
+      if (block.text) sse(res, "content_block_delta", { type: "content_block_delta", index: i, delta: { type: "text_delta", text: block.text } });
+      sse(res, "content_block_stop", { type: "content_block_stop", index: i });
+    } else if (block.type === "tool_use") {
+      sse(res, "content_block_start", { type: "content_block_start", index: i, content_block: { type: "tool_use", id: block.id, name: block.name, input: {} } });
+      sse(res, "content_block_delta", { type: "content_block_delta", index: i, delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input || {}) } });
+      sse(res, "content_block_stop", { type: "content_block_stop", index: i });
+    }
+  });
+  sse(res, "message_delta", { type: "message_delta", delta: { stop_reason: msg.stop_reason || "end_turn", stop_sequence: null }, usage: { output_tokens: u.output_tokens || 0 } });
+  sse(res, "message_stop", { type: "message_stop" });
+  res.end();
+}
 
-  // Abort the upstream ONLY if the client (claude) drops before we've finished —
-  // detected via res 'close' while the response hasn't ended. (Do NOT use req
-  // 'close': it fires the moment the request body is read, which is before/while
-  // the upstream fetch runs, and would abort every healthy request → 502.)
+async function handle(req, res, provider, reg, raw) {
+  const errOut = (status, type, message) => {
+    try {
+      res.writeHead(status, { "content-type": "application/json" });
+      res.end(JSON.stringify({ type: "error", error: { type, message } }));
+    } catch {}
+  };
+  const { chat, key, fallbackModel } = upstreamFor(provider, reg);
+  if (!chat) return errOut(404, "not_found_error", `no endpoint configured for provider "${provider}"`);
+  if (!key) return errOut(400, "authentication_error", `key not set for "${provider}" — add it in ⚙ CONNECT`);
+  let a;
+  try { a = JSON.parse(raw); } catch { return errOut(400, "invalid_request_error", "bad json"); }
+
+  const model = pickModel(a.model, fallbackModel);
+  // No usable model resolved (blank, or claude-* leaked through for a provider with
+  // no default) → tell the user plainly instead of 400-ing the upstream cryptically.
+  if (!model || /^claude/i.test(model))
+    return errOut(400, "invalid_request_error",
+      `no model set for "${provider}" — pick or type a model in the agent's 🧠 BRAIN field` +
+      (provider === "openrouter" || provider === "nvidia" ? ` (use vendor/model form, e.g. openai/gpt-4o)` : ""));
+
+  const body = toOpenAI(a, model);
+  // Buffer the upstream (no live SSE translation) for reliability across providers.
+  body.stream = false;
+  delete body.stream_options;
+
+  // Cancel the upstream only if claude drops before we finish (real task cancel).
   const ac = new AbortController();
   res.on("close", () => { if (!res.writableEnded) { try { ac.abort(); } catch {} } });
 
   let r;
   try {
     r = await fetch(chat, { method: "POST", signal: ac.signal,
-      headers: { "content-type": "application/json", authorization: "Bearer " + key },
+      headers: { "content-type": "application/json", authorization: "Bearer " + key,
+        "HTTP-Referer": "https://github.com/bagidea/bagidea-office", "X-Title": "BagIdea Office" },
       body: JSON.stringify(body) });
   } catch (e) {
-    res.writeHead(502, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ type: "error",
-      error: { type: "api_error", message: "upstream fetch failed: " + e.message } }));
+    if (ac.signal.aborted) return;   // cancelled — nothing to send
+    return errOut(502, "api_error", "upstream fetch failed: " + (e && e.message));
   }
-
   if (!r.ok) {
     const txt = await r.text().catch(() => "");
-    res.writeHead(r.status, { "content-type": "application/json" });
-    return res.end(JSON.stringify({ type: "error",
-      error: { type: "api_error", message: (txt || `upstream ${r.status}`).slice(0, 600) } }));
+    return errOut(r.status, "api_error", (txt || `upstream HTTP ${r.status}`).slice(0, 600));
   }
+  let j;
+  try { j = await r.json(); } catch { return errOut(502, "api_error", "upstream returned non-JSON"); }
+  // Some gateways (OpenRouter) answer 200 with an error object in the body.
+  if (j && j.error) return errOut(502, "api_error", String(j.error.message || JSON.stringify(j.error)).slice(0, 600));
 
-  if (!body.stream) {
-    const j = await r.json();
-    res.writeHead(200, { "content-type": "application/json" });
-    return res.end(JSON.stringify(toAnthropic(j, model)));
-  }
-
-  // --- streaming: OpenAI SSE deltas → Anthropic SSE events ---
-  res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
-  let started = false, idx = -1, mode = null;        // mode: "text" | "tool" | null
-  const toolIdx = {};                                // openai tool index → anthropic block idx
-  let usage = { input_tokens: 0, output_tokens: 0 }, stop = "end_turn";
-  const start = () => { if (!started) { started = true;
-    sse(res, "message_start", { type: "message_start", message: { id: "msg_proxy", type: "message",
-      role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage } }); } };
-  const closeBlock = () => { if (mode) { sse(res, "content_block_stop", { type: "content_block_stop", index: idx }); mode = null; } };
-
-  let buf = "";
-  try {
-    for await (const chunk of r.body) {
-      buf += Buffer.from(chunk).toString("utf8");
-      let nl;
-      while ((nl = buf.indexOf("\n")) >= 0) {
-        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
-        if (!line.startsWith("data:")) continue;
-        const p = line.slice(5).trim();
-        if (p === "[DONE]") continue;
-        let j; try { j = JSON.parse(p); } catch { continue; }
-        if (j.usage) usage = { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 };
-        const ch = (j.choices || [])[0]; if (!ch) continue;
-        const d = ch.delta || {};
-        start();
-        if (d.content) {
-          if (mode !== "text") { closeBlock(); idx++; mode = "text";
-            sse(res, "content_block_start", { type: "content_block_start", index: idx, content_block: { type: "text", text: "" } }); }
-          sse(res, "content_block_delta", { type: "content_block_delta", index: idx, delta: { type: "text_delta", text: d.content } });
-        }
-        for (const tc of d.tool_calls || []) {
-          const oi = tc.index == null ? 0 : tc.index;
-          if (!(oi in toolIdx)) { closeBlock(); idx++; toolIdx[oi] = idx; mode = "tool";
-            sse(res, "content_block_start", { type: "content_block_start", index: idx,
-              content_block: { type: "tool_use", id: tc.id || ("call_" + idx), name: (tc.function && tc.function.name) || "", input: {} } }); }
-          else { mode = "tool"; idx = toolIdx[oi]; }
-          const args = tc.function && tc.function.arguments;
-          if (args) sse(res, "content_block_delta", { type: "content_block_delta", index: toolIdx[oi], delta: { type: "input_json_delta", partial_json: args } });
-        }
-        if (ch.finish_reason) stop = STOP[ch.finish_reason] || "end_turn";
-      }
-    }
-  } catch (e) { /* upstream stream dropped — close out cleanly below */ }
-
-  if (!res.writableEnded) {
-    try {
-      start(); closeBlock();
-      sse(res, "message_delta", { type: "message_delta", delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: usage.output_tokens } });
-      sse(res, "message_stop", { type: "message_stop" });
-      res.end();
-    } catch {}
-  }
+  const msg = toAnthropic(j, model);
+  if (a.stream) streamAnthropic(res, msg);
+  else { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(msg)); }
 }
 
-module.exports = { handle, toOpenAI, toAnthropic, pickModel, upstreamFor, UPSTREAM };
+module.exports = { handle, streamAnthropic, toOpenAI, toAnthropic, pickModel, upstreamFor, UPSTREAM };
