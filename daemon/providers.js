@@ -53,12 +53,20 @@ const PROVIDERS = {
     models: ["MiniMax-M3"],
   },
   openai: {
-    label: "OpenAI · via LiteLLM", format: "openai", needsProxy: true, baseUrl: null,
-    models: ["gpt-5.5", "gpt-5-mini"],
+    label: "OpenAI", format: "openai", needsProxy: true, baseUrl: null,
+    models: ["gpt-4o", "gpt-4o-mini"],
   },
   gemini: {
-    label: "Gemini · via LiteLLM", format: "openai", needsProxy: true, baseUrl: null,
-    models: ["gemini-3-pro", "gemini-3-flash"],
+    label: "Gemini", format: "openai", needsProxy: true, baseUrl: null,
+    models: ["gemini-2.5-flash", "gemini-2.5-pro"],
+  },
+  openrouter: {
+    label: "OpenRouter", format: "openai", needsProxy: true, baseUrl: null,
+    models: ["openai/gpt-4o", "anthropic/claude-sonnet-4-6", "deepseek/deepseek-chat"],
+  },
+  nvidia: {
+    label: "NVIDIA build", format: "openai", needsProxy: true, baseUrl: null,
+    models: ["meta/llama-3.3-70b-instruct", "deepseek-ai/deepseek-v3"],
   },
 };
 
@@ -84,45 +92,49 @@ function resolve(provider, model, reg = {}, opts = {}) {
   }
 
   const spec = PROVIDERS[provider];
-  if (!spec) { return { ok: false, env: {}, modelArgs: [], reason: "unknown-provider" }; }
-
   const pc = pConf[provider] || {};
-  let baseUrl, token;
+  // "anthropic" (claude talks straight to the endpoint) or "openai" (via the
+  // built-in proxy). Built-ins read it from the catalog; CUSTOM providers store
+  // their kind/baseUrl/token in providerConfig[id].
+  const kind = spec ? spec.format : pc.kind;
+  if (!kind) return { ok: false, env: {}, modelArgs: [], reason: "unknown-provider" };
 
-  if (spec.needsProxy) {
-    // OpenAI/Gemini need a translator. Preference order:
-    //  1) explicit LiteLLM gateway (providerConfig.litellm.baseUrl / reg.litellmUrl)
-    //  2) the daemon's built-in Anthropic↔OpenAI proxy (opts.proxyBase) — requires
-    //     the matching main key (OPENAI_API_KEY / GEMINI_API_KEY) in reg.apiKeys
-    //  3) else FAIL-OPEN to Claude (never aim `claude` at a dead endpoint → hang)
+  let baseUrl, token;
+  if (kind === "openai") {
+    // Needs translation. openai/gemini may use an explicit LiteLLM gateway; everyone
+    // else (openrouter/nvidia/custom) uses the daemon's built-in proxy, which resolves
+    // the real upstream + key from providerConfig (proxy.js → upstreamFor).
+    const builtinPair = provider === "openai" || provider === "gemini";
     const lc = pConf.litellm;
-    const liteUrl = (lc && lc.baseUrl) || reg.litellmUrl;
+    const liteUrl = builtinPair && ((lc && lc.baseUrl) || reg.litellmUrl);
     if (liteUrl) {
       baseUrl = liteUrl;
       token = (lc && lc.token) || pc.token || "litellm";
     } else if (opts.proxyBase) {
-      const keyName = provider === "openai" ? "OPENAI_API_KEY" : "GEMINI_API_KEY";
-      if (!(reg.apiKeys && reg.apiKeys[keyName])) {
-        return { ok: false, env: {}, modelArgs: [], reason: "main-key-not-set" };
+      const mainKey = provider === "openai" ? (reg.apiKeys || {}).OPENAI_API_KEY
+                    : provider === "gemini" ? (reg.apiKeys || {}).GEMINI_API_KEY : null;
+      if (!pc.token && !mainKey) {
+        return { ok: false, env: {}, modelArgs: [], reason: "key-not-set" };
       }
       baseUrl = `${opts.proxyBase}/proxy/${provider}`;
-      token = "office";   // built-in proxy injects the real key; this value is ignored
+      token = "office";   // the proxy injects the real key; this value is ignored
     } else {
       return { ok: false, env: {}, modelArgs: [], reason: "no-proxy-available" };
     }
   } else {
-    baseUrl = pc.baseUrl || spec.baseUrl;
-    token   = pc.token;
-  }
-
-  // Not configured yet → fail-open to plain Claude.
-  if (!baseUrl || !token) {
-    return { ok: false, env: {}, modelArgs: [], reason: "not-configured" };
+    // anthropic-kind: direct.
+    baseUrl = pc.baseUrl || (spec && spec.baseUrl);
+    token = pc.token;
+    if (!baseUrl || !token) {
+      return { ok: false, env: {}, modelArgs: [], reason: "not-configured" };
+    }
   }
 
   out.env = { ANTHROPIC_BASE_URL: baseUrl, ANTHROPIC_AUTH_TOKEN: token };
   let m = pc.model || model;
-  if (!m && spec.needsProxy) m = provider === "openai" ? "gpt-4o-mini" : "gemini-2.5-flash";
+  if (!m && kind === "openai") {
+    m = provider === "openai" ? "gpt-4o-mini" : provider === "gemini" ? "gemini-2.5-flash" : "";
+  }
   if (m) out.modelArgs = ["--model", String(m)];
   out.reason = provider;
   return out;

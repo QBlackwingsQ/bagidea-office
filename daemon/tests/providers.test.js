@@ -79,11 +79,42 @@ test("built-in proxy: openai routes to /proxy/openai when main key + proxyBase p
   assert.deepStrictEqual(r.modelArgs, ["--model", "gpt-4o-mini"]); // safe default when blank
 });
 
-test("built-in proxy: fails-open to Claude when the main key is missing", () => {
+test("built-in proxy: fails-open to Claude when no key is set", () => {
   const r = resolve("gemini", "", { apiKeys: {} }, { proxyBase: "http://127.0.0.1:8787" });
   assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.reason, "main-key-not-set");
+  assert.strictEqual(r.reason, "key-not-set");
   assert.deepStrictEqual(r.env, {});
+});
+
+test("OpenRouter routes to the built-in proxy with a providerConfig token", () => {
+  const reg = { providerConfig: { openrouter: { token: "or-x" } } };
+  const r = resolve("openrouter", "openai/gpt-4o", reg, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:8787/proxy/openrouter");
+  assert.deepStrictEqual(r.modelArgs, ["--model", "openai/gpt-4o"]);
+});
+
+test("custom anthropic-kind provider routes direct from providerConfig", () => {
+  const reg = { providerConfig: { acme: { kind: "anthropic", baseUrl: "https://acme.ai/anthropic", token: "k", model: "acme-1" } } };
+  const r = resolve("acme", "", reg, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "https://acme.ai/anthropic");
+  assert.strictEqual(r.env.ANTHROPIC_AUTH_TOKEN, "k");
+  assert.deepStrictEqual(r.modelArgs, ["--model", "acme-1"]);
+});
+
+test("custom openai-kind provider routes through the built-in proxy", () => {
+  const reg = { providerConfig: { foo: { kind: "openai", baseUrl: "https://foo.ai/v1", token: "k" } } };
+  const r = resolve("foo", "foo-large", reg, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:8787/proxy/foo");
+  assert.deepStrictEqual(r.modelArgs, ["--model", "foo-large"]);
+});
+
+test("custom provider with no kind is unknown (fail-open)", () => {
+  const r = resolve("mystery", "x", { providerConfig: { mystery: { token: "k" } } }, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "unknown-provider");
 });
 
 test("LiteLLM gateway takes precedence over the built-in proxy", () => {

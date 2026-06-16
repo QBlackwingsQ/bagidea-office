@@ -3176,19 +3176,24 @@ const server = http.createServer((req, res) => {
       };
       try {
         const { provider } = JSON.parse(body);
-        const pc = (reg.providerConfig || {})[provider];
-        if (!pc || !pc.token) return done(false, "ยังไม่ได้วาง key");
+        reg.providerConfig = reg.providerConfig || {};
+        const pc = reg.providerConfig[provider] || {};
+        const spec = providers.PROVIDERS[provider];
+        const kind = spec ? spec.format : pc.kind;   // "anthropic" | "openai"
+        if (!kind) return done(false, "ไม่รู้จัก provider นี้");
         const setConn = (ok, models) => {
+          reg.providerConfig[provider] = reg.providerConfig[provider] || {};
           reg.providerConfig[provider].connected = ok;
           if (models) reg.providerConfig[provider].models = models;
           try { saveReg(); } catch {}
         };
         const signal = AbortSignal.timeout ? AbortSignal.timeout(12000) : undefined;
-        if (provider === "openai" || provider === "gemini") {
-          const base = provider === "openai"
-            ? "https://api.openai.com/v1"
-            : "https://generativelanguage.googleapis.com/v1beta/openai";
-          const r = await fetch(base + "/models", { headers: { authorization: "Bearer " + pc.token }, signal });
+        if (kind === "openai") {
+          // OpenAI-compatible: GET /models validates the key + lists usable models.
+          const { models: modelsUrl, key } = proxy.upstreamFor(provider, reg);
+          if (!modelsUrl) return done(false, "ไม่พบ endpoint");
+          if (!key) return done(false, "ยังไม่ได้วาง key");
+          const r = await fetch(modelsUrl, { headers: { authorization: "Bearer " + key }, signal });
           if (r.ok) {
             let models = [];
             try { const j = await r.json(); models = (j.data || []).map((m) => m.id).filter(Boolean).sort().slice(0, 80); } catch {}
@@ -3198,10 +3203,10 @@ const server = http.createServer((req, res) => {
           setConn(false);
           return done(false, "key ไม่ผ่าน (HTTP " + r.status + ")");
         }
-        // direct Anthropic-compatible providers (glm/deepseek/qwen/minimax)
-        const spec = providers.PROVIDERS[provider];
+        // anthropic-compatible: a 1-token /v1/messages probe (401/403 = bad key).
         const base = pc.baseUrl || (spec && spec.baseUrl);
         if (!base) return done(false, "ไม่พบ endpoint");
+        if (!pc.token) return done(false, "ยังไม่ได้วาง key");
         const model = pc.model || (spec && spec.models && spec.models.find(Boolean)) || "";
         const r = await fetch(base.replace(/\/+$/, "") + "/v1/messages", {
           method: "POST", signal,

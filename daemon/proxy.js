@@ -18,7 +18,22 @@ const UPSTREAM = {
             fallbackModel: "gpt-4o-mini" },
   gemini: { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
             key: "GEMINI_API_KEY", fallbackModel: "gemini-2.5-flash" },
+  openrouter: { url: "https://openrouter.ai/api/v1/chat/completions", fallbackModel: "" },
+  nvidia: { url: "https://integrate.api.nvidia.com/v1/chat/completions", fallbackModel: "" },
 };
+
+// Resolve the OpenAI-compatible upstream for a provider. An explicit
+// reg.providerConfig[provider].baseUrl (a `/v1`-style base — used by OpenRouter,
+// NVIDIA, and any custom provider) wins; otherwise the built-in default URL.
+// Key: providerConfig.token first, else the built-in main-key env (openai/gemini).
+function upstreamFor(provider, reg) {
+  const pc = (reg.providerConfig || {})[provider] || {};
+  const up = UPSTREAM[provider] || {};
+  const chat = pc.baseUrl ? pc.baseUrl.replace(/\/+$/, "") + "/chat/completions" : up.url;
+  const key = pc.token || (up.key && (reg.apiKeys || {})[up.key]) || "";
+  const models = chat ? chat.replace(/\/chat\/completions$/, "/models") : "";
+  return { chat, models, key, fallbackModel: pc.model || up.fallbackModel || "" };
+}
 
 const STOP = { stop: "end_turn", length: "max_tokens", tool_calls: "tool_use", content_filter: "end_turn" };
 
@@ -104,28 +119,31 @@ function sse(res, event, data) { res.write(`event: ${event}\ndata: ${JSON.string
 
 // Resolve the model to forward: ignore claude-* (means --model didn't apply) and
 // blanks, falling back to a safe widely-available model per upstream.
-function pickModel(reqModel, up) {
+function pickModel(reqModel, fallback) {
   const m = String(reqModel || "");
-  return (!m || /^claude/i.test(m)) ? up.fallbackModel : m;
+  return (!m || /^claude/i.test(m)) ? (fallback || m) : m;
 }
 
 async function handle(req, res, provider, reg, raw) {
-  const up = UPSTREAM[provider];
-  if (!up) { res.writeHead(404); return res.end("unknown proxy provider"); }
-  const key = (reg.apiKeys || {})[up.key];
+  const { chat, key, fallbackModel } = upstreamFor(provider, reg);
+  if (!chat) {
+    res.writeHead(404, { "content-type": "application/json" });
+    return res.end(JSON.stringify({ type: "error",
+      error: { type: "not_found_error", message: `no endpoint configured for provider "${provider}"` } }));
+  }
   if (!key) {
     res.writeHead(400, { "content-type": "application/json" });
     return res.end(JSON.stringify({ type: "error",
-      error: { type: "authentication_error", message: `${up.key} not set — add it in ⚙ CONNECT` } }));
+      error: { type: "authentication_error", message: `key not set for "${provider}" — add it in ⚙ CONNECT` } }));
   }
   let a;
   try { a = JSON.parse(raw); } catch { res.writeHead(400); return res.end("bad json"); }
-  const model = pickModel(a.model, up);
+  const model = pickModel(a.model, fallbackModel);
   const body = toOpenAI(a, model);
 
   let r;
   try {
-    r = await fetch(up.url, { method: "POST",
+    r = await fetch(chat, { method: "POST",
       headers: { "content-type": "application/json", authorization: "Bearer " + key },
       body: JSON.stringify(body) });
   } catch (e) {
@@ -197,4 +215,4 @@ async function handle(req, res, provider, reg, raw) {
   res.end();
 }
 
-module.exports = { handle, toOpenAI, toAnthropic, pickModel, UPSTREAM };
+module.exports = { handle, toOpenAI, toAnthropic, pickModel, upstreamFor, UPSTREAM };

@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { toOpenAI, toAnthropic, pickModel, UPSTREAM } = require("../proxy");
+const { toOpenAI, toAnthropic, pickModel, upstreamFor, UPSTREAM } = require("../proxy");
 
 test("toOpenAI: system + user text → system + user messages", () => {
   const o = toOpenAI({ system: "You are X", messages: [{ role: "user", content: "hi" }] }, "gpt-4o");
@@ -71,7 +71,27 @@ test("toAnthropic: tool_calls → tool_use blocks + stop_reason tool_use", () =>
 });
 
 test("pickModel: claude-* and blank fall back; real model passes through", () => {
-  assert.strictEqual(pickModel("claude-sonnet-4-6", UPSTREAM.openai), "gpt-4o-mini");
-  assert.strictEqual(pickModel("", UPSTREAM.gemini), "gemini-2.5-flash");
-  assert.strictEqual(pickModel("gpt-4o", UPSTREAM.openai), "gpt-4o");
+  assert.strictEqual(pickModel("claude-sonnet-4-6", "gpt-4o-mini"), "gpt-4o-mini");
+  assert.strictEqual(pickModel("", "gemini-2.5-flash"), "gemini-2.5-flash");
+  assert.strictEqual(pickModel("gpt-4o", "gpt-4o-mini"), "gpt-4o");
+  assert.strictEqual(pickModel("claude-x", ""), "claude-x"); // no fallback → as-is
+});
+
+test("upstreamFor: built-in openai uses default URL + main key", () => {
+  const u = upstreamFor("openai", { apiKeys: { OPENAI_API_KEY: "sk" } });
+  assert.strictEqual(u.chat, "https://api.openai.com/v1/chat/completions");
+  assert.strictEqual(u.models, "https://api.openai.com/v1/models");
+  assert.strictEqual(u.key, "sk");
+});
+
+test("upstreamFor: custom provider uses providerConfig baseUrl + token", () => {
+  const u = upstreamFor("foo", { providerConfig: { foo: { baseUrl: "https://foo.ai/v1", token: "k" } } });
+  assert.strictEqual(u.chat, "https://foo.ai/v1/chat/completions");
+  assert.strictEqual(u.models, "https://foo.ai/v1/models");
+  assert.strictEqual(u.key, "k");
+});
+
+test("upstreamFor: providerConfig.token overrides the main-key env", () => {
+  const u = upstreamFor("openai", { apiKeys: { OPENAI_API_KEY: "sk" }, providerConfig: { openai: { token: "pc" } } });
+  assert.strictEqual(u.key, "pc");
 });
