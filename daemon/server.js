@@ -3146,7 +3146,7 @@ const server = http.createServer((req, res) => {
     // registry.json + the agent's spawn env — never sent to Anthropic.
     readBody(req, (body) => {
       try {
-        const { provider, token, baseUrl, model, remove } = JSON.parse(body);
+        const { provider, token, baseUrl, model, kind, label, remove } = JSON.parse(body);
         if (!provider) throw new Error("provider required");
         reg.providerConfig = reg.providerConfig || {};
         if (remove) {
@@ -3156,6 +3156,8 @@ const server = http.createServer((req, res) => {
           if (token !== undefined) { c.token = String(token).slice(0, 400); c.connected = false; }
           if (baseUrl !== undefined) c.baseUrl = String(baseUrl).slice(0, 300);
           if (model !== undefined) c.model = String(model).slice(0, 60);
+          if (kind !== undefined) c.kind = kind === "openai" ? "openai" : "anthropic";
+          if (label !== undefined) c.label = String(label).slice(0, 40);
           reg.providerConfig[provider] = c;
         }
         saveReg();
