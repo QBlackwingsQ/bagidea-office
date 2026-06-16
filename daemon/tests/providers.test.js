@@ -56,11 +56,18 @@ test("openai routes through LiteLLM gateway (proxy provider)", () => {
   assert.deepStrictEqual(r.modelArgs, ["--model", "gpt-5.5"]);
 });
 
-test("proxy provider with no litellm config still resolves (default url + placeholder token)", () => {
+test("proxy provider with NO litellm gateway fails-open to Claude (no phantom proxy → no hang)", () => {
   const r = resolve("gemini", "gemini-3-pro", {});
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "litellm-not-configured");
+  assert.deepStrictEqual(r.env, {}); // never points claude at a dead localhost proxy
+});
+
+test("proxy provider routes once a litellm gateway URL is configured", () => {
+  const r = resolve("gemini", "gemini-3-pro", { litellmUrl: "http://127.0.0.1:4000" });
   assert.strictEqual(r.ok, true);
-  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:4000"); // DEFAULT_LITELLM
-  assert.ok(r.env.ANTHROPIC_AUTH_TOKEN); // non-empty placeholder
+  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:4000");
+  assert.ok(r.env.ANTHROPIC_AUTH_TOKEN);
 });
 
 test("P2 confirmed endpoints resolve from catalog with just a token", () => {

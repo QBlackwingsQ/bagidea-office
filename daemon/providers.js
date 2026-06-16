@@ -90,10 +90,17 @@ function resolve(provider, model, reg = {}) {
   let baseUrl, token;
 
   if (spec.needsProxy) {
-    // OpenAI/Gemini ride a local LiteLLM gateway (Anthropic-compatible front).
-    const lc = pConf.litellm || {};
-    baseUrl = lc.baseUrl || reg.litellmUrl || DEFAULT_LITELLM;
-    token   = lc.token || pc.token || "litellm";   // LiteLLM master key (any non-empty)
+    // OpenAI/Gemini ride a LiteLLM gateway. ONLY route when the user has actually
+    // pointed us at a running gateway (reg.providerConfig.litellm.baseUrl or
+    // reg.litellmUrl). Otherwise FAIL-OPEN to Claude — never aim `claude` at a
+    // phantom localhost proxy, or the agent hangs silently with no response.
+    const lc = pConf.litellm;
+    const proxyUrl = (lc && lc.baseUrl) || reg.litellmUrl;
+    if (!proxyUrl) {
+      return { ok: false, env: {}, modelArgs: [], reason: "litellm-not-configured" };
+    }
+    baseUrl = proxyUrl;
+    token   = (lc && lc.token) || pc.token || "litellm";   // LiteLLM master key
   } else {
     baseUrl = pc.baseUrl || spec.baseUrl;
     token   = pc.token;
