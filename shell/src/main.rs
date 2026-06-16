@@ -80,8 +80,7 @@ const SPLASH_HTML: &str = r#"<!doctype html>
 const ORB_HTML: &str = r#"<!doctype html>
 <html><body style="margin:0;overflow:hidden;background:#0a111d;user-select:none;-webkit-user-select:none;cursor:pointer">
 <div id="ring"></div>
-<img id="logo" src="http://127.0.0.1:8787/brand/logo_ico_cute.png" draggable="false"
-     onerror="document.body.style.background='radial-gradient(circle at 32% 28%,#2a78d8,#0b1422)'">
+<img id="logo" src="http://127.0.0.1:8787/brand/logo_ico_cute.png" draggable="false">
 <style>
   /* a quiet living ring: slow drift at rest, eager spin while agents work */
   #ring { position:absolute; inset:0; border-radius:50%;
@@ -99,6 +98,21 @@ const ORB_HTML: &str = r#"<!doctype html>
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(0.955); } }
 </style>
+<script>
+  // Cold boot: the shell paints the orb BEFORE the daemon's HTTP server is up, so the
+  // logo 404s. A one-shot onerror would leave the orb dark until a manual restart — so
+  // retry until the daemon answers, then drop the dark fallback. (Mirrors wire() below.)
+  (function () {
+    const logo = document.getElementById('logo');
+    const SRC = 'http://127.0.0.1:8787/brand/logo_ico_cute.png';
+    let tries = 0;
+    logo.onerror = function () {
+      document.body.style.background = 'radial-gradient(circle at 32% 28%,#2a78d8,#0b1422)';
+      if (tries++ < 180) setTimeout(() => { logo.src = SRC + '?r=' + tries; }, 1000);
+    };
+    logo.onload = function () { document.body.style.background = '#0a111d'; };
+  })();
+</script>
 <script>
   // Live pulse: the ring knows when the office is actually working.
   let busy = 0;
