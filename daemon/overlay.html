@@ -3042,13 +3042,19 @@
         if (saveBtn) { saveBtn.disabled = !connected; saveBtn.title = connected ? "" : tr("⚠ ยังไม่ได้เชื่อมต่อ provider นี้"); }
         if (!connected) { warn.style.display = "block"; modelWrap.style.display = "none"; return; }
         warn.style.display = "none"; modelWrap.style.display = "";
-        // Known-good models first, then the rest of the live list (deduped) — so the
-        // safe picks are obvious and you don't accidentally choose a plan-gated model.
+        // Known-good models first, then the usable live ones (drop image/tts/audio/
+        // embedding/realtime variants + Gemini's "models/" prefix), so pickers show
+        // only models that can actually back a text agent.
+        const NONCHAT = /(image|tts|audio|speech|whisper|transcri|embedding|\bembed\b|moderation|rerank|guard|safety|dall|imagen|veo|sora|-live\b|realtime|\bclip\b|bison|gecko)/i;
         const stat = MODELS[p] || [];
-        const live = (pcAll[p] && pcAll[p].models) || [];
-        curModels = [...stat, ...live.filter((m) => !stat.includes(m))];
-        // Show the saved model only on the agent's own provider; reset when switching.
-        modelInput.value = provChanged ? "" : ((p === (a.provider || "claude")) ? (a.model || "") : "");
+        const live = ((pcAll[p] && pcAll[p].models) || []).map((m) => m.replace(/^models\//, ""));
+        const liveChat = live.filter((m) => !NONCHAT.test(m));
+        const usable = liveChat.length ? liveChat : live;
+        curModels = [...stat, ...usable.filter((m) => !stat.includes(m))];
+        // Keep the saved model on the agent's own provider; otherwise pre-select a
+        // sensible default (first usable model) so the field is never left invalid.
+        const def = p === "claude" ? "" : (curModels.find(Boolean) || "");
+        modelInput.value = (!provChanged && a.model && p === (a.provider || "claude")) ? a.model : def;
       };
       buildProviderOptions();
       provSel.onchange = () => renderModels(true);

@@ -124,6 +124,19 @@ function pickModel(reqModel, fallback) {
   return (!m || /^claude/i.test(m)) ? (fallback || m) : m;
 }
 
+// Models that can't back a TEXT agent (image/audio/embedding/realtime/etc.) — drop
+// them from the pickers. Also strip Gemini's "models/" id prefix (the OpenAI-compat
+// chat endpoint wants the bare id, while /models lists them prefixed).
+const NON_CHAT_MODEL = /(image|tts|audio|speech|whisper|transcri|embedding|\bembed\b|moderation|rerank|guard|safety|dall|imagen|veo|sora|-live\b|realtime|\bclip\b|bison|gecko)/i;
+function cleanModels(ids) {
+  const norm = (ids || []).map((id) => String(id).replace(/^models\//, "")).filter(Boolean);
+  const chat = norm.filter((id) => !NON_CHAT_MODEL.test(id));
+  const src = chat.length ? chat : norm;   // never return empty if everything filtered
+  const seen = new Set(), out = [];
+  for (const id of src) if (!seen.has(id)) { seen.add(id); out.push(id); }
+  return out;
+}
+
 // Synthesise an Anthropic SSE stream from a COMPLETE translated message. We buffer
 // the upstream (no live SSE delta translation — that was fragile across providers)
 // then replay it as the exact Anthropic event sequence claude expects.
@@ -164,7 +177,8 @@ async function handle(req, res, provider, reg, raw) {
   let a;
   try { a = JSON.parse(raw); } catch { return errOut(400, "invalid_request_error", "bad json"); }
 
-  const model = pickModel(a.model, fallbackModel);
+  let model = pickModel(a.model, fallbackModel);
+  model = model.replace(/^models\//, "");   // Gemini ids: chat endpoint wants the bare id
   // No usable model resolved (blank, or claude-* leaked through for a provider with
   // no default) → tell the user plainly instead of 400-ing the upstream cryptically.
   if (!model || /^claude/i.test(model))
@@ -205,4 +219,4 @@ async function handle(req, res, provider, reg, raw) {
   else { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(msg)); }
 }
 
-module.exports = { handle, streamAnthropic, toOpenAI, toAnthropic, pickModel, upstreamFor, UPSTREAM };
+module.exports = { handle, streamAnthropic, toOpenAI, toAnthropic, pickModel, cleanModels, upstreamFor, UPSTREAM };

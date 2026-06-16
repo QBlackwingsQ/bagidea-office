@@ -3226,7 +3226,7 @@ const server = http.createServer((req, res) => {
           const r = await fetch(modelsUrl, { headers: { authorization: "Bearer " + key }, signal });
           if (r.ok) {
             let models = [];
-            try { const j = await r.json(); models = (j.data || []).map((m) => m.id).filter(Boolean).sort().slice(0, 80); } catch {}
+            try { const j = await r.json(); models = proxy.cleanModels((j.data || []).map((m) => m.id)).sort().slice(0, 120); } catch {}
             setConn(true, models);
             return done(true, "เชื่อมต่อแล้ว ✓", models);
           }

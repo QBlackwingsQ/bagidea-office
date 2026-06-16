@@ -1,6 +1,24 @@
 const test = require("node:test");
 const assert = require("node:assert");
-const { toOpenAI, toAnthropic, pickModel, upstreamFor, streamAnthropic, UPSTREAM } = require("../proxy");
+const { toOpenAI, toAnthropic, pickModel, cleanModels, upstreamFor, streamAnthropic, UPSTREAM } = require("../proxy");
+
+test("cleanModels strips models/ prefix, drops non-chat models, dedups", () => {
+  const out = cleanModels([
+    "models/gemini-2.5-flash", "models/gemini-3.1-flash-image",
+    "models/gemini-3.1-flash-tts-preview", "models/gemini-3.1-flash-live-preview",
+    "gpt-4o", "text-embedding-3-large", "dall-e-3", "whisper-1", "gpt-4o", "openai/gpt-4o",
+  ]);
+  assert.ok(out.includes("gemini-2.5-flash"));
+  assert.ok(out.includes("gpt-4o"));
+  assert.ok(out.includes("openai/gpt-4o"));
+  assert.ok(!out.some((m) => /image|tts|live|embedding|dall|whisper/.test(m)), "non-chat leaked: " + out);
+  assert.ok(!out.some((m) => m.startsWith("models/")), "prefix leaked");
+  assert.strictEqual(out.filter((m) => m === "gpt-4o").length, 1, "not deduped");
+});
+
+test("cleanModels never returns empty (falls back to prefix-stripped list)", () => {
+  assert.deepStrictEqual(cleanModels(["models/some-image-model"]), ["some-image-model"]);
+});
 
 test("streamAnthropic emits a well-formed Anthropic SSE sequence (text + tool_use)", () => {
   const w = [];
