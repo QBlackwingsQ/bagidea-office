@@ -30,6 +30,7 @@ const maintenance = require("./maintenance");
 const retrieval = require("./retrieval");
 const skillsSync = require("./skills");
 const providers = require("./providers");
+const proxy = require("./proxy");
 
 const WORKSPACE = path.join(__dirname, "..", "workspace");
 // Server-local paths (the refactor moved REPLAY_COUNT to constants.js but these
@@ -297,7 +298,7 @@ function brainRoute(agentId) {
   const a = agentId && reg.agents ? reg.agents[agentId] : null;
   const provider = (a && a.provider) || reg.defaultProvider || "claude";
   const model = (a && a.model) || "";
-  return providers.resolve(provider, model, reg);
+  return providers.resolve(provider, model, reg, { proxyBase: "http://127.0.0.1:" + OEP_PORT });
 }
 
 // Plain headless claude call → final text (prompt drafting, reflections).
@@ -3121,6 +3122,22 @@ const server = http.createServer((req, res) => {
         pushRoster();   // feature gates flip live in every client
         res.writeHead(200); res.end("ok");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url.startsWith("/proxy/")) {
+    // 🧠 Built-in Anthropic↔OpenAI translator: claude (ANTHROPIC_BASE_URL →
+    // /proxy/<provider>) posts here; we call OpenAI/Gemini with the user's main
+    // key and translate the reply back (streaming + tool-use). See proxy.js.
+    const prov = (req.url.split("/")[2] || "").split("?")[0];
+    readBodyRaw(req, (raw) => {
+      proxy.handle(req, res, prov, reg, raw).catch((e) => {
+        try {
+          if (!res.headersSent) {
+            res.writeHead(502, { "content-type": "application/json" });
+            res.end(JSON.stringify({ type: "error", error: { type: "api_error", message: String(e && e.message) } }));
+          } else { res.end(); }
+        } catch {}
+      });
     });
 
   } else if (req.method === "POST" && req.url === "/registry/provider") {

@@ -73,7 +73,7 @@ const DEFAULT_LITELLM = "http://127.0.0.1:4000";
 //     litellm:  { baseUrl?, token? },          // for openai/gemini
 //     ...
 //   }
-function resolve(provider, model, reg = {}) {
+function resolve(provider, model, reg = {}, opts = {}) {
   const out = { ok: true, env: {}, modelArgs: [], reason: "claude-default" };
   const pConf = (reg && reg.providerConfig) || {};
 
@@ -90,17 +90,26 @@ function resolve(provider, model, reg = {}) {
   let baseUrl, token;
 
   if (spec.needsProxy) {
-    // OpenAI/Gemini ride a LiteLLM gateway. ONLY route when the user has actually
-    // pointed us at a running gateway (reg.providerConfig.litellm.baseUrl or
-    // reg.litellmUrl). Otherwise FAIL-OPEN to Claude — never aim `claude` at a
-    // phantom localhost proxy, or the agent hangs silently with no response.
+    // OpenAI/Gemini need a translator. Preference order:
+    //  1) explicit LiteLLM gateway (providerConfig.litellm.baseUrl / reg.litellmUrl)
+    //  2) the daemon's built-in Anthropic↔OpenAI proxy (opts.proxyBase) — requires
+    //     the matching main key (OPENAI_API_KEY / GEMINI_API_KEY) in reg.apiKeys
+    //  3) else FAIL-OPEN to Claude (never aim `claude` at a dead endpoint → hang)
     const lc = pConf.litellm;
-    const proxyUrl = (lc && lc.baseUrl) || reg.litellmUrl;
-    if (!proxyUrl) {
-      return { ok: false, env: {}, modelArgs: [], reason: "litellm-not-configured" };
+    const liteUrl = (lc && lc.baseUrl) || reg.litellmUrl;
+    if (liteUrl) {
+      baseUrl = liteUrl;
+      token = (lc && lc.token) || pc.token || "litellm";
+    } else if (opts.proxyBase) {
+      const keyName = provider === "openai" ? "OPENAI_API_KEY" : "GEMINI_API_KEY";
+      if (!(reg.apiKeys && reg.apiKeys[keyName])) {
+        return { ok: false, env: {}, modelArgs: [], reason: "main-key-not-set" };
+      }
+      baseUrl = `${opts.proxyBase}/proxy/${provider}`;
+      token = "office";   // built-in proxy injects the real key; this value is ignored
+    } else {
+      return { ok: false, env: {}, modelArgs: [], reason: "no-proxy-available" };
     }
-    baseUrl = proxyUrl;
-    token   = (lc && lc.token) || pc.token || "litellm";   // LiteLLM master key
   } else {
     baseUrl = pc.baseUrl || spec.baseUrl;
     token   = pc.token;
@@ -112,7 +121,8 @@ function resolve(provider, model, reg = {}) {
   }
 
   out.env = { ANTHROPIC_BASE_URL: baseUrl, ANTHROPIC_AUTH_TOKEN: token };
-  const m = pc.model || model;
+  let m = pc.model || model;
+  if (!m && spec.needsProxy) m = provider === "openai" ? "gpt-4o-mini" : "gemini-2.5-flash";
   if (m) out.modelArgs = ["--model", String(m)];
   out.reason = provider;
   return out;

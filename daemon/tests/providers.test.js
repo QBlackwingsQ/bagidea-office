@@ -56,18 +56,40 @@ test("openai routes through LiteLLM gateway (proxy provider)", () => {
   assert.deepStrictEqual(r.modelArgs, ["--model", "gpt-5.5"]);
 });
 
-test("proxy provider with NO litellm gateway fails-open to Claude (no phantom proxy → no hang)", () => {
+test("proxy provider with no gateway + no proxyBase fails-open to Claude (no hang)", () => {
   const r = resolve("gemini", "gemini-3-pro", {});
   assert.strictEqual(r.ok, false);
-  assert.strictEqual(r.reason, "litellm-not-configured");
-  assert.deepStrictEqual(r.env, {}); // never points claude at a dead localhost proxy
+  assert.strictEqual(r.reason, "no-proxy-available");
+  assert.deepStrictEqual(r.env, {}); // never points claude at a dead endpoint
 });
 
-test("proxy provider routes once a litellm gateway URL is configured", () => {
+test("proxy provider routes once a LiteLLM gateway URL is configured", () => {
   const r = resolve("gemini", "gemini-3-pro", { litellmUrl: "http://127.0.0.1:4000" });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:4000");
   assert.ok(r.env.ANTHROPIC_AUTH_TOKEN);
+});
+
+test("built-in proxy: openai routes to /proxy/openai when main key + proxyBase present", () => {
+  const reg = { apiKeys: { OPENAI_API_KEY: "sk-x" } };
+  const r = resolve("openai", "", reg, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:8787/proxy/openai");
+  assert.strictEqual(r.env.ANTHROPIC_AUTH_TOKEN, "office"); // real key injected by the proxy
+  assert.deepStrictEqual(r.modelArgs, ["--model", "gpt-4o-mini"]); // safe default when blank
+});
+
+test("built-in proxy: fails-open to Claude when the main key is missing", () => {
+  const r = resolve("gemini", "", { apiKeys: {} }, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.reason, "main-key-not-set");
+  assert.deepStrictEqual(r.env, {});
+});
+
+test("LiteLLM gateway takes precedence over the built-in proxy", () => {
+  const reg = { apiKeys: { OPENAI_API_KEY: "sk-x" }, litellmUrl: "http://gw:4000" };
+  const r = resolve("openai", "gpt-5.5", reg, { proxyBase: "http://127.0.0.1:8787" });
+  assert.strictEqual(r.env.ANTHROPIC_BASE_URL, "http://gw:4000");
 });
 
 test("P2 confirmed endpoints resolve from catalog with just a token", () => {
