@@ -573,6 +573,7 @@ remain (FSR scale, grass density, cinema pass) if you want it leaner.
 | [Agents & Skills](docs/guide/agents.md) | จ้างพนักงาน · persona · skills/tools · Security Center |
 | [Projects](docs/guide/projects.md) | places · สร้าง/เปิด/ดูงานสด/ลบโปรเจค |
 | [AI features](docs/guide/ai-features.md) | main keys · เสียง/TTS/realtime · รูปภาพ · ความจำ · social |
+| [Models & Providers](docs/guide/models.md) | สมองถอดเปลี่ยนได้ · เลือกโมเดลต่อ agent · GLM/DeepSeek/Qwen/MiniMax · ประหยัด |
 | [เสียง & Feed mode](docs/guide/voice-feed.md) | F6 push-to-talk · feed mode · NOW WORKING |
 | [Office Editor](docs/guide/editor.md) | จัดเฟอร์นิเจอร์/กำแพง · import โมเดล/รูป |
 | [Plugins](docs/guide/plugins.md) | ระบบส่วนขยาย · music player · เขียน plugin เอง |
