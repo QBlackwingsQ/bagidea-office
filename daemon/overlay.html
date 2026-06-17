@@ -3047,35 +3047,77 @@
         btn.textContent = "▶";
       };
     }
-    // skill / tool assignment chips (re-rendered when the copilot picks some)
+    // Skill / tool assignment. The flat "every chip always shown" list got unwieldy as
+    // the library grew, so: show ONLY what's picked (as removable chips), plus a "＋ add"
+    // button that drops a searchable menu of the rest. Re-rendered when the copilot picks.
+    function buildChipPicker(box, items, sel) {
+      if (!box) return;
+      box.style.position = "relative";
+      box.innerHTML = "";
+      const byVal = new Map(items.map((it) => [it.val, it]));
+      const chips = document.createElement("div");
+      chips.className = "checks";
+      const menu = document.createElement("div");
+      menu.className = "cbmenu";
+      const search = document.createElement("input");
+      search.placeholder = "🔍 " + tr("ค้นหา");
+      search.style.cssText = "width:100%;margin:0;border:0;border-bottom:1px solid var(--line);border-radius:9px 9px 0 0;padding:8px 12px;font-size:12px;background:#0e1626;color:var(--text)";
+      const opts = document.createElement("div");
+      menu.append(search, opts);
+      box.append(chips, menu);
+      const addBtn = document.createElement("div");
+      addBtn.className = "chk"; addBtn.style.cssText = "border-style:dashed;cursor:pointer";
+      addBtn.textContent = "＋ " + tr("เพิ่ม");
+      function renderChips() {
+        chips.innerHTML = "";
+        const picked = items.filter((it) => sel.has(it.val));
+        for (const v of sel) if (!byVal.has(v)) picked.push({ val: v, label: v, tip: "" });
+        if (!picked.length) {
+          const e = document.createElement("span");
+          e.style.cssText = "font-size:11px;color:var(--dim);align-self:center";
+          e.textContent = tr("ยังไม่ได้เลือก");
+          chips.appendChild(e);
+        }
+        for (const it of picked) {
+          const c = document.createElement("div");
+          c.className = "chk on"; c.title = it.tip || ""; c.style.cursor = "pointer";
+          c.innerHTML = `${esc(it.label)} <b style="opacity:.6;margin-left:2px">✕</b>`;
+          c.onclick = () => { sel.delete(it.val); renderChips(); if (menu.classList.contains("open")) renderOpts(); };
+          chips.appendChild(c);
+        }
+        chips.appendChild(addBtn);
+      }
+      function renderOpts() {
+        const f = search.value.trim().toLowerCase();
+        const avail = items.filter((it) => !sel.has(it.val) &&
+          (!f || (it.label + " " + (it.tip || "")).toLowerCase().includes(f)));
+        opts.innerHTML = avail.length ? "" : `<div class="cbopt" style="opacity:.55;cursor:default">${tr("ไม่พบ")}</div>`;
+        for (const it of avail) {
+          const o = document.createElement("div");
+          o.className = "cbopt"; o.title = it.tip || ""; o.textContent = it.label;
+          o.onmousedown = (e) => { e.preventDefault(); sel.add(it.val); renderChips(); renderOpts(); search.focus(); };
+          opts.appendChild(o);
+        }
+      }
+      addBtn.onclick = () => {
+        const open = !menu.classList.contains("open");
+        menu.classList.toggle("open", open);
+        if (open) { search.value = ""; renderOpts(); setTimeout(() => search.focus(), 0); }
+      };
+      search.oninput = renderOpts;
+      search.onblur = () => setTimeout(() => menu.classList.remove("open"), 160);
+      renderChips();
+    }
     const skBox = modalCard.querySelector("#eSkills");
     function renderSkillChips() {
-      if (!skBox) return;
-      const ids = Object.keys(REGSKILLS);
-      skBox.innerHTML = ids.length ? "" : `<span style="font-size:11px;color:var(--dim)">no skills in the library yet</span>`;
-      for (const sid of ids) {
-        const c = document.createElement("div");
-        c.className = "chk" + (mySkills.has(sid) ? " on" : "");
-        c.textContent = REGSKILLS[sid].name;
-        c.title = REGSKILLS[sid].description || "";
-        c.onclick = () => { mySkills.has(sid) ? mySkills.delete(sid) : mySkills.add(sid); c.classList.toggle("on"); };
-        skBox.appendChild(c);
-      }
+      buildChipPicker(skBox, Object.keys(REGSKILLS).map((sid) =>
+        ({ val: sid, label: REGSKILLS[sid].name, tip: REGSKILLS[sid].description || "" })), mySkills);
     }
     const tlBox = modalCard.querySelector("#eTools");
     function renderToolChips() {
-      if (!tlBox) return;
-      tlBox.innerHTML = "";
-      const addToolChip = (val, label, tip) => {
-        const c = document.createElement("div");
-        c.className = "chk" + (myTools.has(val) ? " on" : "");
-        c.textContent = label;
-        c.title = tip || "";
-        c.onclick = () => { myTools.has(val) ? myTools.delete(val) : myTools.add(val); c.classList.toggle("on"); };
-        tlBox.appendChild(c);
-      };
-      for (const t of REGTOOLS) addToolChip(t, t, BUILTIN_DESC[t]);
-      for (const n of Object.keys(REGMCP)) addToolChip("mcp:" + n, "🔌 " + n, REGMCP[n].command);
+      const items = REGTOOLS.map((t) => ({ val: t, label: t, tip: BUILTIN_DESC[t] || "" }))
+        .concat(Object.keys(REGMCP).map((n) => ({ val: "mcp:" + n, label: "🔌 " + n, tip: (REGMCP[n] || {}).command || "" })));
+      buildChipPicker(tlBox, items, myTools);
     }
     renderSkillChips();
     renderToolChips();
