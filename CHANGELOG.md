@@ -4,6 +4,50 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.0] — More brains, safer delegation, workflows agents can build
+
+A big follow-up to Swappable Brains: many more models, a quality gate, and a Workflow
+Builder the team can drive — plus a redesigned chat-head.
+
+**Added**
+- **8 more model providers.** Via the built-in proxy: **Groq, Cerebras, xAI (Grok),
+  Mistral, Together AI, Fireworks** — and **local Ollama / LM Studio that need NO API
+  key** (just run the server). Plus **Kimi (Moonshot)** talking direct. That's **18
+  providers built in**, plus your own custom ones.
+- **Live model lists** — provider pickers now fetch each provider's *current* models
+  (on Connect, and when you open an agent's brain), so newly-released models always show
+  up — no more stale hard-coded list.
+- **Verification loop** (opt-in, Settings → Skills) — a skeptical reviewer double-checks
+  delegated work before it reaches the CEO, handing it back once for fixes if something's
+  off. Off by default (it costs an extra pass).
+- **Agents can build workflows.** Ask an agent to capture a plan and it saves an editable
+  workflow into the Builder (a new built-in **Build Workflow** skill teaches the syntax);
+  and the Builder gains **🪄 Draft with Director** — describe a goal, get a workflow to edit.
+- **Approve / reject proposals in-place** — when the team pitches a project, act right in
+  the chat *or* the feed; no need to open 🗂 TASKS.
+- **`bagidea brains`** CLI — every provider's connect status + each agent's model and live
+  context usage.
+
+**Improved**
+- **Built-in skills are protected** — the baseline skills (plugin building, office control,
+  Build Workflow…) are read-only; only your own / agent-learned skills can be edited or
+  deleted. The agent editor's **Skills & Tools** are now searchable **add-dropdowns** that
+  show only what's assigned (no more wall of chips).
+- **The Director (main) is locked as the office manager** — orchestrate-and-delegate is its
+  primary job and survives any prompt edit, so work can always be routed.
+- **Workflow Builder**: example workflows are read-only (Save forks an editable copy), a
+  save now confirms before overwriting your own, and the confirm dialog is on-brand.
+- **Redesigned chat-head orb** — a crisp neon energy-ring (a cyan→purple glow that turns),
+  replacing the old jagged edge; easier to spot on the desktop.
+- New UI strings translated across all 14 languages.
+
+**Fixed**
+- Cold-boot dark / jagged orb and splash — now crisp via per-pixel transparency.
+- Server-room fire crackle no longer loops forever after an agent puts it out. *(Godot —
+  takes effect on a Godot re-export / fresh install.)*
+- The editor's save dialog is now the themed modal, not raw grey Godot chrome. *(Godot —
+  same caveat.)*
+
 ## [0.8.2] — Cold-boot dark orb: the real fix
 
 **Fixed**

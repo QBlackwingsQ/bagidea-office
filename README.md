@@ -33,6 +33,7 @@ the office truly comes alive.
 ### 🆕 Recently shipped
 BagIdea Office is updated **constantly** — every office gets a 🔄 banner and one-click `bagidea update`. The latest:
 
+- **v0.9.0 — 🧠 More brains + safer delegation + agent-built workflows:** **18 model providers** built in now — added **Groq, Cerebras, xAI (Grok), Mistral, Together, Fireworks** (via the proxy), **local Ollama / LM Studio that need no API key**, and **Kimi (Moonshot)** direct — and the pickers fetch each provider's **live model list** so new models always show. Plus an opt-in **verification loop** (a reviewer double-checks delegated work before it reaches you), **approve/reject project proposals right in the chat or feed**, **agents that build workflows** (and a **🪄 Draft with Director** button), **protected built-in skills** with searchable Skill/Tool pickers, a **redesigned neon chat-head**, and a `bagidea brains` CLI.
 - **v0.8.0 — 🧠 Swappable Brains (the big one):** run **each agent on its own model**. Director on Claude (the thinker), builders on cheaper models → big cost savings with **zero** loss of Claude Code's tools/skills/sessions (Claude Code is still the engine — only the brain behind it swaps). Talk **direct** to Claude/GLM/DeepSeek/Qwen/MiniMax, or reach **OpenAI/Gemini/OpenRouter/NVIDIA + your own custom providers** through a **built-in, zero-dependency proxy** (no LiteLLM/Python). Plus **auto-compact + auto-new-thread for *every* model** (long chats never clog or freeze — see below), a **🧠 BRAINS monitor**, a per-message **model tag + context meter**, **per-provider cost** in STATS, a **typing indicator**, and **cancel-a-task** mid-flight.
 - **v0.7.8–0.7.9** — 🔀 **Workflow Builder** grows up: an n8n-style **graph canvas** (zoom/pan, branch & merge), **tabs**, **7 read-only examples**, and you can **▶️ Run** a flow or **🧠 save it as a Skill**. 🧰 **Tools Hub** — one-click MCP servers (Browser automation, Google, Postgres, Notion…) with a plain-language guide. New windows now follow your **language**, plugins open one way, the chat tucks aside for new windows, and a **wallpaper-stability** fix (no more vanishing on Win+D).
 - **v0.7.7** — first Workflow Builder, channels that **mirror out + show “typing” + take slash commands**, **multi-monitor** wallpaper + monitor picker. Fixes the wallpaper reports (#5/#6/#7).
@@ -71,8 +72,11 @@ until you opt an agent in.
 
 **Two ways agents reach a model:**
 
-- 🟢 **Direct (Anthropic-compatible)** — Claude, **GLM** (Z.AI), **DeepSeek**, **Qwen** (Alibaba), **MiniMax**. The CLI talks straight to them; nothing in between.
-- 🔵 **Via the built-in proxy (OpenAI-compatible)** — **OpenAI**, **Gemini**, **OpenRouter**, **NVIDIA build**, and **your own custom providers**. A **zero-dependency proxy is baked into the daemon** and translates Anthropic ↔ OpenAI on the fly — **no LiteLLM, no Python** to install (already have a LiteLLM gateway? point a custom provider at it).
+- 🟢 **Direct (Anthropic-compatible)** — Claude, **GLM** (Z.AI), **DeepSeek**, **Qwen** (Alibaba), **MiniMax**, **Kimi** (Moonshot). The CLI talks straight to them; nothing in between.
+- 🔵 **Via the built-in proxy (OpenAI-compatible)** — **OpenAI**, **Gemini**, **OpenRouter**, **NVIDIA build**, **Groq**, **Cerebras**, **xAI (Grok)**, **Mistral**, **Together AI**, **Fireworks**, and **your own custom providers**. A **zero-dependency proxy is baked into the daemon** and translates Anthropic ↔ OpenAI on the fly — **no LiteLLM, no Python** (already have a LiteLLM gateway? point a custom provider at it).
+- 💻 **Local, no API key** — **Ollama** and **LM Studio**: just run the server and Connect; the office routes to `localhost`. Free, offline, private.
+
+The model pickers fetch each provider's **live model list** when you connect (and when you open an agent's brain), so brand-new models show up without an app update.
 
 | 🔌 Connect once in ⚙ CONNECT → 🧠 MODELS/PROVIDERS | ➕ Others + your own custom provider |
 |---|---|

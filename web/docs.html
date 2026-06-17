@@ -145,8 +145,8 @@ bagidea start   # launch the office</code></pre>
     <h2 id="brains" data-i18n="d_brain_h">Swappable brains (any model)</h2>
     <p data-i18n-html="d_brain_p">Run each agent on its own model. Claude Code stays the engine — only the brain behind it swaps, and it fails open to Claude, so nothing changes until you opt an agent in. <b>No LiteLLM or Python to install</b> — a translation proxy is built into the daemon.</p>
     <ul>
-      <li data-i18n-html="d_brain_direct"><b>Direct (Anthropic-compatible):</b> Claude · GLM (Z.AI) · DeepSeek · Qwen (Alibaba) · MiniMax</li>
-      <li data-i18n-html="d_brain_proxy"><b>Via the built-in proxy (OpenAI-compatible):</b> OpenAI · Gemini · OpenRouter · NVIDIA build</li>
+      <li data-i18n-html="d_brain_direct"><b>Direct (Anthropic-compatible):</b> Claude · GLM (Z.AI) · DeepSeek · Qwen (Alibaba) · MiniMax · Kimi (Moonshot)</li>
+      <li data-i18n-html="d_brain_proxy"><b>Via the built-in proxy (OpenAI-compatible):</b> OpenAI · Gemini · OpenRouter · NVIDIA · Groq · Cerebras · xAI (Grok) · Mistral · Together · Fireworks — plus <b>local Ollama / LM Studio with no API key</b>. Pickers fetch each provider's live model list.</li>
       <li data-i18n-html="d_brain_custom"><b>Custom providers:</b> add your own — name + Base URL + key, Anthropic- or OpenAI-style (point it at a LiteLLM gateway if you run one).</li>
     </ul>
     <img src="img/brains-connect.png" alt="Connect providers in CONNECT → MODELS/PROVIDERS">
