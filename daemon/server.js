@@ -165,6 +165,7 @@ function rosterEvt() {
   return { type: "roster.sync", agents: reg.agents, roles: reg.roles,
     tools: reg.tools, builtinTools: BUILTIN_TOOLS, mcp: reg.mcpServers,
     skills: reg.skills, autoSkills: reg.autoSkills !== false,
+    verifyDelegated: reg.verifyDelegated === true,
     sound: reg.sound !== false, heartbeatMin: Number(reg.heartbeatMin || 0),
     features: featuresMap(), tts: reg.tts !== false,
     socialMin: Number(reg.socialMin !== undefined ? reg.socialMin : 60),
@@ -1670,13 +1671,56 @@ function makeDelegateFilter(depth, session, onHit) {
           runClaude(t, inst, {
             project: proj,
             session: proj && (!te || te.proj !== proj) ? "new" : undefined,
-            onDone: (out, ok) => reportToMain(t, out, ok, depth, session),
+            onDone: (out, ok) => verifyThenReport(t, inst, out, ok, depth, session, proj),
           });
         }, 4500);
       } else keep.push(ln);
     }
     return keep.join("\n").trim();
   };
+}
+
+// Optional QA gate (reg.verifyDelegated, default off): before a delegate's result
+// goes back to the Director, a skeptical reviewer pass — running as the same agent so
+// it has the project's tools/cwd, but on a FRESH thread so it inspects the work with
+// fresh eyes — checks it's genuinely done. On real problems it hands the work back to
+// the assignee ONCE (resuming their thread), then reports. Never recurses; never blocks
+// (any reviewer failure ships the original result).
+function verifyThenReport(fromId, task, out, ok, depth, session, proj) {
+  if (!reg.verifyDelegated || !ok) return reportToMain(fromId, out, ok, depth, session);
+  const a = reg.agents[fromId] || { name: fromId };
+  // Snapshot the assignee's WORK thread now — before the review run spawns a new one.
+  const wl = sess[fromId] || [];
+  const workSess = wl.length ? wl.reduce((x, y) => (x.ts > y.ts ? x : y)).key : undefined;
+  const reviewPrompt =
+    `You are a STRICT reviewer. Your teammate ${a.name} was given this task:\n` +
+    `"""${String(task).slice(0, 2000)}"""\n\nThey reported this result:\n` +
+    `"""${String(out || "").slice(0, 4000)}"""\n\n` +
+    `Independently inspect the actual files/project with your tools and judge whether the ` +
+    `task is genuinely and fully done and correct. Reply with EXACTLY one of:\n` +
+    `• A line "APPROVED" — if the work is complete and correct.\n` +
+    `• A line "ISSUES:" then a short bullet list of REAL problems or missing pieces.\n` +
+    `Be skeptical but fair — only raise concrete problems, not style nitpicks.`;
+  runClaude(fromId, reviewPrompt, {
+    project: proj, session: "new", noSub: true,
+    logPrompt: `🔍 ตรวจงานของ ${a.name} ก่อนส่ง CEO`,
+    onDone: (verdict, vok) => {
+      const txt = String(verdict || "");
+      const flagged = vok && /(^|\n)\s*ISSUES\s*:/i.test(txt) && !/^\s*APPROVED\s*$/im.test(txt);
+      if (!flagged) return reportToMain(fromId, out, ok, depth, session);  // approved / inconclusive → ship
+      // One fix-back loop: hand the findings to the assignee on their own thread, then
+      // report the revised result (no second review — bounded).
+      const fixPrompt =
+        `A reviewer checked your work on the earlier task and found problems:\n` +
+        `"""${txt.slice(0, 3000)}"""\n\nFix them now, then give your updated result.`;
+      runClaude(fromId, fixPrompt, {
+        project: proj, session: workSess, noSub: true,
+        logPrompt: `🛠 ${a.name} แก้งานตามรีวิว`,
+        onDone: (out2, ok2) =>
+          reportToMain(fromId, `${out2}\n\n(ตรวจแล้ว + แก้ตามรีวิว)`, ok2, depth, session),
+      });
+    },
+  });
 }
 
 function reportToMain(fromId, text, ok, depth, session) {
@@ -3914,6 +3958,21 @@ const server = http.createServer((req, res) => {
         saveReg();
         pushRoster();
         broadcast({ type: "ui.sound", on: reg.sound });
+        res.writeHead(200);
+        res.end("ok");
+      } catch {
+        res.writeHead(400);
+        res.end("bad json");
+      }
+    });
+
+  } else if (req.method === "POST" && req.url === "/registry/verify") {
+    // 🔍 Verify delegated work before it reports to the CEO (opt-in, default off).
+    readBody(req, (body) => {
+      try {
+        reg.verifyDelegated = !!JSON.parse(body).enabled;
+        saveReg();
+        pushRoster();
         res.writeHead(200);
         res.end("ok");
       } catch {

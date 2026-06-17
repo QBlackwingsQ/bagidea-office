@@ -1175,7 +1175,7 @@
   const ROLES = ["Researcher", "Engineer", "Designer", "Analyst", "Operator", "Specialist"];
   const NPCS = [1, 2, 3, 4, 5, 6, 9, 10, 11, 12];
   // Live registry from the daemon (roster.sync) — identity source of truth.
-  let ROSTER = {}, REGROLES = [], REGSKILLS = {}, REGTOOLS = [], AUTOSKILLS = true;
+  let ROSTER = {}, REGROLES = [], REGSKILLS = {}, REGTOOLS = [], AUTOSKILLS = true, VERIFY = false;
   let BUILTIN_DESC = {}, REGMCP = {}, SOUND = true, HEARTBEAT = 0;
   let FEATURES = { openai: false, gemini: false, stt: false, tts: false, live: false, image: false };
   let TTSON = true, SOCIALMIN = 60, MAXSTAFF = 18, PROPOSALMIN = 120;
@@ -2619,6 +2619,8 @@
     } else if (tab === "skills") {
       bodyHtml = `<div class="switch ${AUTOSKILLS ? "on" : ""}" id="autoSw">
           <div class="knob"></div> Auto-learn: agents distill finished work into new skills</div>
+        <div class="switch ${VERIFY ? "on" : ""}" id="verifySw">
+          <div class="knob"></div> ${tr("ตรวจงานก่อนส่ง CEO: reviewer เช็คงานที่มอบหมาย แล้วให้แก้ 1 รอบถ้าเจอปัญหา (ช้าลง+ใช้ token เพิ่ม)")}</div>
         <input id="sFilter" class="filterbox" placeholder="🔍 ค้นหา skill…">
         <div id="slist" class="biglist"></div><button class="bigbtn" id="newSkill">＋ New skill</button>`;
     } else if (tab === "tools") {
@@ -2749,6 +2751,11 @@
       modalCard.querySelector("#autoSw").onclick = async (e) => {
         await api("/registry/autoskills", { enabled: !AUTOSKILLS });
         e.currentTarget.classList.toggle("on", !AUTOSKILLS);
+      };
+      modalCard.querySelector("#verifySw").onclick = async (e) => {
+        await api("/registry/verify", { enabled: !VERIFY });
+        VERIFY = !VERIFY;
+        e.currentTarget.classList.toggle("on", VERIFY);
       };
       const list = modalCard.querySelector("#slist");
       for (const [id, s] of Object.entries(REGSKILLS)) {
@@ -4687,6 +4694,7 @@
       BUILTIN_DESC = ev.builtinTools || {};
       REGMCP = ev.mcp || {};
       AUTOSKILLS = ev.autoSkills !== false;
+      VERIFY = ev.verifyDelegated === true;
       SOUND = ev.sound !== false;
       if (typeof ev.monitor === "number") monMode = ev.monitor;
       if (typeof ev.monitors === "number") monCount = Math.max(1, ev.monitors);
