@@ -166,6 +166,23 @@ foreach ($t in @(
   try { winget.exe install --id $t.id -e --silent --accept-package-agreements --accept-source-agreements | Out-Null } catch {}
 }
 Sync-Path
+
+# LibreOffice — lets agents READ + CONVERT Office files headlessly (xlsx/docx/pptx -> csv/pdf/...).
+# Detected by path (it doesn't put soffice on PATH itself), so we add its program dir too.
+$loDir = "C:\Program Files\LibreOffice\program"
+$loExe = Join-Path $loDir "soffice.exe"
+if (Test-Path $loExe) { Write-Host "      - LibreOffice already present" -ForegroundColor DarkGray }
+else {
+  Write-Host "      - installing LibreOffice (Office-file support, ~350 MB, optional)..." -ForegroundColor DarkGray
+  try { winget.exe install --id TheDocumentFoundation.LibreOffice -e --silent --accept-package-agreements --accept-source-agreements | Out-Null } catch {}
+}
+if (Test-Path $loExe) {
+  $up = [Environment]::GetEnvironmentVariable("Path", "User")
+  if ($up -notlike "*LibreOffice\program*") {
+    [Environment]::SetEnvironmentVariable("Path", "$up;$loDir", "User"); Sync-Path
+    Write-Host "      - added soffice to PATH" -ForegroundColor DarkGray
+  }
+}
 Ok "CLI tools step done (any that failed are optional)"
 
 # ---- stop a running instance first -------------------------------------------
