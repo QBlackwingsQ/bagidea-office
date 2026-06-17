@@ -2784,7 +2784,7 @@ const server = http.createServer((req, res) => {
     // Monitoring snapshot: every provider's connect status + every agent's brain
     // (provider/model) and latest context usage. Feeds the 🧠 BRAINS sidebar panel.
     const pc = reg.providerConfig || {};
-    const KNOWN = ["claude", "glm", "deepseek", "qwen", "minimax", "openai", "gemini", "openrouter", "nvidia"];
+    const KNOWN = ["claude", "glm", "deepseek", "qwen", "minimax", "moonshot", "openai", "gemini", "openrouter", "nvidia"];
     const byProvider = {};
     const agents = [];
     for (const [id, a] of Object.entries(reg.agents || {})) {
@@ -3476,8 +3476,21 @@ const server = http.createServer((req, res) => {
           body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
         });
         const authBad = r.status === 401 || r.status === 403;  // other codes = key authenticated
-        setConn(!authBad);
-        return done(!authBad, authBad ? "key ไม่ผ่าน (HTTP " + r.status + ")" : "เชื่อมต่อแล้ว ✓");
+        // Best-effort: pull the provider's LIVE model list from its OpenAI-compatible
+        // /models endpoint so the picker is always current (GLM/DeepSeek/Qwen/Moonshot…).
+        // A failure here never blocks the connection — static hints + the free-type field
+        // still work.
+        let models = null;
+        const murl = pc.modelsUrl || (spec && spec.modelsUrl);
+        if (!authBad && murl) {
+          try {
+            const msig = AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined;
+            const mr = await fetch(murl, { headers: { authorization: "Bearer " + pc.token }, signal: msig });
+            if (mr.ok) { const j = await mr.json(); models = proxy.cleanModels((j.data || []).map((m) => m.id)).sort().slice(0, 120); }
+          } catch {}
+        }
+        setConn(!authBad, models && models.length ? models : null);
+        return done(!authBad, authBad ? "key ไม่ผ่าน (HTTP " + r.status + ")" : "เชื่อมต่อแล้ว ✓", models);
       } catch (e) { return done(false, String((e && e.message) || e)); }
     });
 

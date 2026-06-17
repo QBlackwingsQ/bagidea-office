@@ -31,11 +31,13 @@ const PROVIDERS = {
   glm: {
     label: "GLM · Z.AI", format: "anthropic", direct: true,
     baseUrl: "https://api.z.ai/api/anthropic",          // confirmed (Z.AI docs)
-    models: ["glm-4.6", "glm-4.5"],
+    modelsUrl: "https://api.z.ai/api/paas/v4/models",   // OpenAI-compatible model list
+    models: ["glm-4.6", "glm-4.5"],                     // hint only — live list is fetched on Connect
   },
   deepseek: {
     label: "DeepSeek", format: "anthropic", direct: true,
     baseUrl: "https://api.deepseek.com/anthropic",        // confirmed (DeepSeek docs)
+    modelsUrl: "https://api.deepseek.com/models",
     models: ["deepseek-v4-pro", "deepseek-v4-flash"],     // chat/reasoner deprecated 2026-07-24
   },
   qwen: {
@@ -43,6 +45,7 @@ const PROVIDERS = {
     // confirmed (Alibaba Model Studio docs). International endpoint; mainland-China
     // is https://dashscope.aliyuncs.com/apps/anthropic — set reg.providerConfig.qwen.baseUrl.
     baseUrl: "https://dashscope-intl.aliyuncs.com/apps/anthropic",
+    modelsUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/models",
     models: ["qwen3-coder-plus", "qwen3-coder-next", "qwen3-coder-flash"],
   },
   minimax: {
@@ -51,6 +54,14 @@ const PROVIDERS = {
     // https://api.minimaxi.com/anthropic (extra "i") — set reg.providerConfig.minimax.baseUrl.
     baseUrl: "https://api.minimax.io/anthropic",
     models: ["MiniMax-M3"],
+  },
+  moonshot: {
+    label: "Kimi · Moonshot", format: "anthropic", direct: true,
+    // confirmed (Moonshot docs). International endpoint; mainland-China is
+    // https://api.moonshot.cn/anthropic — set reg.providerConfig.moonshot.baseUrl.
+    baseUrl: "https://api.moonshot.ai/anthropic",
+    modelsUrl: "https://api.moonshot.ai/v1/models",
+    models: ["kimi-k2.5", "kimi-k2", "kimi-latest"],
   },
   openai: {
     label: "OpenAI", format: "openai", needsProxy: true, baseUrl: null,
