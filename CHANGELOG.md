@@ -43,10 +43,8 @@ Builder the team can drive — plus a redesigned chat-head.
 
 **Fixed**
 - Cold-boot dark / jagged orb and splash — now crisp via per-pixel transparency.
-- Server-room fire crackle no longer loops forever after an agent puts it out. *(Godot —
-  takes effect on a Godot re-export / fresh install.)*
-- The editor's save dialog is now the themed modal, not raw grey Godot chrome. *(Godot —
-  same caveat.)*
+- Server-room fire crackle no longer loops forever after an agent puts it out.
+- The editor's save dialog is now an on-brand themed modal, not raw grey Godot chrome.
 
 ## [0.8.2] — Cold-boot dark orb: the real fix
 
