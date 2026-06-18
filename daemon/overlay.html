@@ -705,6 +705,7 @@
   .arow .meta { min-width: 0; flex: 1; }
   .arow .meta b { font-size: 13px; display: block; }
   .arow .meta span { font-size: 11px; color: var(--dim); }
+  .arow .meta .brain { font-size: 10.5px; color: rgba(94,200,255,0.85); }
   /* Fixed-height rows: confirm messages swap in-place, never reflow the list */
   .arow .meta b, .arow .meta span {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
@@ -2737,9 +2738,18 @@
         const f = document.createElement("div");
         f.className = "face"; face(f, id, 34);
         row.appendChild(f);
+        // The CEO is the user's stand-in, not an AI agent — no model to show.
+        let _brainHtml = "";
+        if (id !== "ceo") {
+          const _prov = a.provider || "claude";
+          const _brain = a.model ? a.model : (_prov === "claude" ? "Claude" : _prov);
+          const _brainTitle = `${_prov}${a.model ? " / " + a.model : ""}`;
+          _brainHtml = `<span class="brain" title="${_brainTitle}">🧠 ${_brain}</span>`;
+        }
         row.insertAdjacentHTML("beforeend",
           `<div class="meta"><b>${a.name}</b><span>${a.role} · ${id}` +
-          ` · 🎯${(a.skills || []).length} · 🔧${(a.tools || []).length}</span></div>` +
+          ` · 🎯${(a.skills || []).length} · 🔧${(a.tools || []).length}</span>` +
+          _brainHtml + `</div>` +
           (a.protected ? `<span class="lock" title="Core agent — cannot be deleted">🔒</span>` : ""));
         row.onclick = () => openEditor(id);
         list.appendChild(row);
