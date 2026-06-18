@@ -4,13 +4,24 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
-## [Unreleased]
+## [0.9.7] — Agent models in the roster, orb polish
+
+**Added**
+- **Each agent's model is shown in the roster** — the agents panel now shows a
+  "🧠 &lt;model&gt;" line under every agent (e.g. `deepseek-v4-pro`, `kimi-for-coding`,
+  `glm-4.6`; `Claude` for the default brain), with the full provider/model on hover. The
+  CEO — your stand-in, not an AI agent — shows none.
 
 **Fixed**
 - **Orb edge looks smooth** — the circular clip sat exactly on the orb's glowing rim, so
-  its hard (non-anti-aliased) edge cut the glow against the colourful wallpaper and looked
-  jagged. The orb art is now inset a few pixels, leaving a thin transparent halo so the
-  clip edge falls on empty space instead of the glow.
+  its hard edge cut the glow against the colourful wallpaper and looked jagged. The orb art
+  is now inset a few pixels, leaving a thin transparent halo so the clip falls on empty
+  space instead of the glow.
+- **No caption chrome behind the orb on click** — despite being undecorated, the orb
+  window still carried a system menu + min/max styles, so clicking it flashed a white
+  caption bar and a system icon / window buttons in the corners. Those styles are dropped
+  and the non-client area is removed, so nothing draws behind the orb (without disturbing
+  the transparent compositing).
 
 ## [0.9.6] — Orb click-through
 
