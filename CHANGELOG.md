@@ -7,6 +7,11 @@ in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 ## [Unreleased]
 
 **Fixed**
+- **DeepSeek context window now correct (1M)** — DeepSeek was capped at a 128k usage
+  meter and compacted threads at ~115k tokens, far below its real **1M-token** window
+  (deepseek-v4-pro / v4-flash). Both the meter and the compaction budget are raised to
+  match, so DeepSeek threads run far longer before summarizing. (Still overridable per
+  provider via `providerConfig.contextWindow` / `contextBudget`.)
 - **Orb no longer has an invisible grab box** — the chat-head's square window let
   its transparent corners (outside the visible circle) catch clicks and drags. Pointer
   events outside the circle are now ignored, so only the orb itself drags and toggles.

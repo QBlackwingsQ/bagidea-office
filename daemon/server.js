@@ -363,7 +363,7 @@ function isOverflowError(t) { return !!t && OVERFLOW_RE.test(String(t)); }
 // system prompt + tool schemas the office always sends (~25k). 0 = never compact
 // (Claude manages its own context). Unknown/custom → providerConfig.contextBudget,
 // else a safe default. Overridable per provider via providerConfig[p].contextBudget.
-const CTX_BUDGET = { claude: 0, glm: 115000, deepseek: 115000, qwen: 230000,
+const CTX_BUDGET = { claude: 0, glm: 115000, deepseek: 800000, qwen: 230000,
   minimax: 180000, openai: 115000, gemini: 800000, openrouter: 100000, nvidia: 100000 };
 function provBudget(agent) {
   const a = reg.agents && reg.agents[agent];
@@ -387,7 +387,7 @@ function overBudget(agent, entry, cwd) {
 
 // Context window per backend (for the chat's usage meter — distinct from the compaction
 // budget above; Claude's real window is ~200k). Overridable via providerConfig.contextWindow.
-const CTX_WINDOW = { claude: 200000, glm: 128000, deepseek: 128000, qwen: 256000,
+const CTX_WINDOW = { claude: 200000, glm: 128000, deepseek: 1000000, qwen: 256000,
   minimax: 200000, openai: 128000, gemini: 1000000, openrouter: 128000, nvidia: 128000 };
 function ctxWindow(agent) {
   const a = reg.agents && reg.agents[agent];
