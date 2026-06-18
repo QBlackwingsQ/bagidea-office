@@ -4758,6 +4758,21 @@ function makeFrameParser(cb) {
   };
 }
 
+// Drop a record of a voice call into main's latest thread (chat-app style: who + when +
+// how long), so the owner sees the call in the conversation history.
+function logCall(text) {
+  try {
+    const list = sess["main"] || [];
+    const entry = list.length ? list.reduce((x, y) => (x.ts > y.ts ? x : y)) : null;
+    if (entry) {
+      entry.log.push({ who: "agent", text, ts: Date.now() });
+      while (entry.log.length > 200) entry.log.shift();
+      saveSess();
+    }
+    broadcast({ type: "chat.message", agent: "main", text, session: entry && entry.key });
+  } catch {}
+}
+
 // 📞 Realtime voice: bridge the overlay mic ⇄ Gemini Live, with the office's
 // own knowledge in the system prompt and an agent's voice preset.
 function handleLive(req, sock) {
@@ -4777,6 +4792,23 @@ function handleLive(req, sock) {
     try { return fs.readFileSync(OFFICE_MD, "utf8").slice(0, 2000); } catch { return ""; }
   })();
   const team = teamList();
+  // A live office snapshot so the call agent actually knows its work (projects running,
+  // proposals waiting, scheduled jobs) — not just the team roster.
+  const snap = (() => {
+    const out = [];
+    try { const ps = projectStatus(); if (ps.length) out.push("Projects: " + ps.map((p) => p.name + (p.ai ? " (in progress)" : "")).join(", ")); } catch {}
+    try { const pend = (proposals || []).filter((p) => p.status === "pending"); if (pend.length) out.push("Proposals awaiting the owner's approval: " + pend.map((p) => p.name).join(", ")); } catch {}
+    try { const jb = (jobs || []).filter((j) => !j.done && j.enabled !== false); if (jb.length) out.push("Scheduled jobs: " + jb.length); } catch {}
+    return out.join("\n");
+  })();
+  let callStart = 0, callStartStr = "", callEnded = false;
+  const endCall = () => {
+    if (callEnded || !callStart) return;
+    callEnded = true;
+    const s = Math.round((Date.now() - callStart) / 1000);
+    const dur = s >= 60 ? `${Math.floor(s / 60)} นาที ${s % 60} วิ` : `${s} วิ`;
+    logCall(`📞 คุยสายเสียงกับ ${a.name || "ผู้ช่วย"} · ${callStartStr} · นาน ${dur}`);
+  };
 
   const gemini = require("./channels").wsConnect(
     "generativelanguage.googleapis.com",
@@ -4788,14 +4820,23 @@ function handleLive(req, sock) {
           generationConfig: { responseModalities: ["AUDIO"],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: presetVoice } } } },
           systemInstruction: { parts: [{ text:
-            `คุณคือ "${a.name || "ผู้ช่วย"}" พนักงานใน BagIdea Office คุยกับเจ้าของแบบเป็นกันเอง ` +
-            `ภาษาไทย กระชับ. ทีมงาน:\n${team}\nข้อมูลออฟฟิศ:\n${ctxNote}` }] },
+            `คุณคือ "${a.name || "ผู้ช่วย"}" หัวหน้าทีม (Director) ของ BagIdea Office — มือขวาของเจ้าของ (CEO). ` +
+            `ตอนนี้กำลังคุยสายเสียงสดกับเจ้าของ พูดเป็นกันเอง กระชับ เป็นธรรมชาติ (ภาษาไทย เว้นแต่เจ้าของพูดอังกฤษ). ` +
+            `คุณรู้จักงานและออฟฟิศของตัวเองดี — ตอบเรื่องทีม โปรเจค สถานะงาน และช่วยคิด/วางแผนได้เต็มที่. ` +
+            `ถ้าเจ้าของสั่งงานใหม่ ให้รับเรื่องไว้แล้วบอกว่าจะไปจัดการ/มอบหมายให้ทีมหลังวางสาย ` +
+            `(ระหว่างสายยังลงมือทำงานหรือเรียกเครื่องมือไม่ได้).\n\n` +
+            `ทีมงาน:\n${team}\n\nสถานะออฟฟิศตอนนี้:\n${snap || "(ยังไม่มีโปรเจค/งานค้าง)"}\n\nบันทึกออฟฟิศ:\n${ctxNote}` }] },
         } }));
         toClient({ type: "ready" });
       },
       onMsg(raw) {
         let m; try { m = JSON.parse(raw); } catch { return; }
-        if (m.setupComplete) return toClient({ type: "live-ready" });
+        if (m.setupComplete) {
+          callStart = Date.now();
+          const d = new Date();
+          callStartStr = ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+          return toClient({ type: "live-ready" });
+        }
         const parts = m.serverContent && m.serverContent.modelTurn &&
           m.serverContent.modelTurn.parts;
         if (parts) for (const p of parts) {
@@ -4804,7 +4845,7 @@ function handleLive(req, sock) {
         }
         if (m.serverContent && m.serverContent.turnComplete) toClient({ type: "turn-done" });
       },
-      onClose() { toClient({ type: "closed" }); try { sock.end(); } catch {} },
+      onClose() { endCall(); toClient({ type: "closed" }); try { sock.end(); } catch {} },
     });
 
   // overlay → us: text frames carry {type:'audio', data} (16k PCM base64).
@@ -4818,8 +4859,8 @@ function handleLive(req, sock) {
     }
   });
   sock.on("data", parse);
-  sock.on("close", () => { try { gemini.close(); } catch {} });
-  sock.on("error", () => { try { gemini.close(); } catch {} });
+  sock.on("close", () => { endCall(); try { gemini.close(); } catch {} });
+  sock.on("error", () => { endCall(); try { gemini.close(); } catch {} });
 }
 
 server.on("upgrade", (req, sock) => {
