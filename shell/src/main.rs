@@ -30,7 +30,9 @@ use tray_icon::{
     TrayIconBuilder, TrayIconEvent,
 };
 
-const ORB_SIZE: f64 = 72.0;
+const ORB_SIZE: f64 = 78.0;  // window; the orb art is inset ~3px so a thin transparent
+                             // halo sits between the glow and the circular clip edge — the
+                             // clip then cuts empty space, not the glow against the wallpaper.
 const FULL: (f64, f64) = (560.0, 700.0);
 const MINI: (f64, f64) = (390.0, 430.0);
 const FEED_W: f64 = 330.0;
@@ -86,7 +88,9 @@ const ORB_HTML: &str = r#"<!doctype html>
      ring that slowly TURNS so the light flows around the loop, and the logo glowing in the
      middle. All stacked SVG/PNG images so they composite cleanly on the transparent window
      (CSS rounded/conic divs went black here). object-fit:contain keeps each a true circle. */
-  img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+  /* inset leaves a thin transparent halo so the window's circular clip edge falls on
+     empty space, not on the glowing rim (which looked jagged against the wallpaper). */
+  img { position:absolute; inset:3px; width:calc(100% - 6px); height:calc(100% - 6px); object-fit:contain; }
   #ring { animation: spin 4s linear infinite, flicker 3.4s ease-in-out infinite; will-change:transform,opacity; }
   #logo { animation: breathe 3.6s ease-in-out infinite; will-change:transform; }
   body.busy #ring { animation-duration: 1.6s, 1.5s; }   /* working = the loop swirls faster */
@@ -344,7 +348,7 @@ mod platform {
     use std::process::Command;
     use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
     use tao::window::{Window, WindowBuilder};
-    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
     use windows_sys::Win32::Graphics::Gdi::{
         CreateEllipticRgn, CreateRectRgn, CreateRoundRectRgn, SetWindowRgn,
     };
@@ -765,6 +769,63 @@ mod platform {
         }
     }
 
+    // Re-assert top-most with NO frame/size/move/activate change — avoids the caption
+    // or shadow repaint that the tao always_on_top toggle triggered.
+    pub fn raise_topmost(window: &Window) {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
+        unsafe {
+            SetWindowPos(window.hwnd() as HWND, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    }
+
+    // The orb window keeps a hidden caption (despite decorations(false)) that Windows
+    // paints behind the orb when it's clicked — a white bar. Changing the window STYLE
+    // to drop it made a frame show permanently, so instead subclass the window proc and
+    // simply swallow the non-client paint/activate messages: no caption is ever drawn,
+    // and every other message still reaches wry's original proc untouched.
+    static ORB_PREV_PROC: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+    unsafe extern "system" fn orb_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+        use std::sync::atomic::Ordering;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CallWindowProcW, WM_NCACTIVATE, WM_NCCALCSIZE, WM_NCPAINT,
+        };
+        // Make the ENTIRE window client area — no non-client band at all, so Windows/DWM
+        // has nowhere to draw the caption bar, its icon, or the min/close buttons.
+        if msg == WM_NCCALCSIZE && wp != 0 { return 0; }
+        if msg == WM_NCPAINT { return 0; }            // never paint a caption/frame
+        if msg == WM_NCACTIVATE { return 1; }         // keep NC state, no redraw flash
+        let prev: isize = ORB_PREV_PROC.load(Ordering::SeqCst);
+        let f: windows_sys::Win32::UI::WindowsAndMessaging::WNDPROC = std::mem::transmute(prev);
+        CallWindowProcW(f, hwnd, msg, wp, lp)
+    }
+    pub fn suppress_nc(window: &Window) {
+        use std::sync::atomic::Ordering;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetWindowLongPtrW, SetWindowPos, GWL_STYLE, GWLP_WNDPROC, SWP_FRAMECHANGED,
+            SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+            WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_SYSMENU,
+        };
+        unsafe {
+            let hwnd = window.hwnd() as HWND;
+            // The window (despite decorations(false)) carries WS_SYSMENU + min/max boxes,
+            // so DWM draws a system icon and min/max/close buttons in the corners on click.
+            // Drop ONLY those bits — keep WS_CAPTION/BORDER/DLGFRAME so the transparent DWM
+            // composition is untouched (removing those made a white frame show). The proc
+            // below (WM_NCCALCSIZE→0) then removes the caption band itself.
+            let st = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+            SetWindowLongW(hwnd, GWL_STYLE,
+                (st & !(WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX)) as i32);
+            let prev = SetWindowLongPtrW(hwnd, GWLP_WNDPROC, orb_proc as isize);
+            ORB_PREV_PROC.store(prev, Ordering::SeqCst);
+            // Force a frame recompute so the style change + WM_NCCALCSIZE take effect.
+            SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED | SWP_NOACTIVATE);
+        }
+    }
+
     pub fn region_round(window: &Window, w: f64, h: f64, radius: f64) {
         let sf = window.scale_factor();
         unsafe {
@@ -1071,6 +1132,8 @@ mod platform {
     }
 
     pub fn set_no_activate(_window: &Window) {}
+    pub fn raise_topmost(window: &Window) { window.set_always_on_top(false); window.set_always_on_top(true); }
+    pub fn suppress_nc(_window: &Window) {}
 
     fn round_corners(window: &Window, radius: f64) {
         unsafe {
@@ -1300,6 +1363,8 @@ mod platform {
     pub fn focus_pid(_pid: u32) -> bool { false }
     pub fn apply_chrome(b: WindowBuilder) -> WindowBuilder { b }
     pub fn set_no_activate(_w: &Window) {}
+    pub fn raise_topmost(window: &Window) { window.set_always_on_top(false); window.set_always_on_top(true); }
+    pub fn suppress_nc(_w: &Window) {}
     pub fn region_round(_w: &Window, _a: f64, _b: f64, _r: f64) {}
     pub fn region_circle(_w: &Window, _d: f64) {}
     pub fn set_feed_alpha(_w: &Window, _f: bool) {}
@@ -1568,6 +1633,7 @@ fn main() {
         &event_loop, "BagIdea", ORB_SIZE, ORB_SIZE, orb_x, orb_y, app_icon(), true,
     );
     platform::set_no_activate(&orb);
+    platform::suppress_nc(&orb);   // swallow non-client paint → no white caption bar on click
     let orb_id = orb.id();
     let p_orb = proxy.clone();
     let _orb_view = WebViewBuilder::new()
@@ -1585,9 +1651,11 @@ fn main() {
         .expect("orb webview");
     orb.set_outer_position(LogicalPosition::new(PARK.0, PARK.1 + 200.0));
 
+    // Re-assert the orb on top WITHOUT churning its frame. The old false→true
+    // always_on_top toggle issued frame-changing SetWindowPos calls, which flashed the
+    // window's caption/shadow (a white bar behind the orb) on every click.
     let raise_orb = |orb: &Window| {
-        orb.set_always_on_top(false);
-        orb.set_always_on_top(true);
+        platform::raise_topmost(orb);
     };
 
     // Pop-out windows (plugin panels / media viewers) opened on demand from the

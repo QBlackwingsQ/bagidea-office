@@ -4,6 +4,14 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [Unreleased]
+
+**Fixed**
+- **Orb edge looks smooth** — the circular clip sat exactly on the orb's glowing rim, so
+  its hard (non-anti-aliased) edge cut the glow against the colourful wallpaper and looked
+  jagged. The orb art is now inset a few pixels, leaving a thin transparent halo so the
+  clip edge falls on empty space instead of the glow.
+
 ## [0.9.6] — Orb click-through
 
 **Fixed**
