@@ -370,7 +370,13 @@ function provBudget(agent) {
   const p = (a && a.provider) || reg.defaultProvider || "claude";
   const pc = (reg.providerConfig || {})[p] || {};
   const b = Number(pc.contextBudget);
-  return b > 0 ? b : (p in CTX_BUDGET ? CTX_BUDGET[p] : 100000);
+  if (b > 0) return b;                         // explicit per-provider override wins
+  if (p === "claude") return CTX_BUDGET.claude; // 0 = let Claude self-compact
+  // Derive from the model's real window (live or researched) so the compaction point
+  // tracks each model — leave ~20% headroom for the reply + office preamble overhead.
+  const w = modelWindow(p, pc.model || (a && a.model));
+  if (w > 0) return Math.round(w * 0.8);
+  return (p in CTX_BUDGET ? CTX_BUDGET[p] : 100000);
 }
 // Estimate a resumed thread's size from the REAL claude session file (full tool
 // outputs live there, not in our trimmed log). bytes/4 ≈ tokens; + office overhead.
@@ -385,15 +391,106 @@ function overBudget(agent, entry, cwd) {
   } catch { return false; }
 }
 
-// Context window per backend (for the chat's usage meter — distinct from the compaction
-// budget above; Claude's real window is ~200k). Overridable via providerConfig.contextWindow.
+// Context window per backend — the LAST-RESORT fallback when a model isn't known and
+// the provider didn't advertise a length. Per-MODEL windows (MODEL_CTX / live) and the
+// per-provider override (providerConfig.contextWindow) both take precedence.
 const CTX_WINDOW = { claude: 200000, glm: 128000, deepseek: 1000000, qwen: 256000,
   minimax: 200000, openai: 128000, gemini: 1000000, openrouter: 128000, nvidia: 128000 };
+
+// Per-MODEL context windows (input tokens), researched against each provider's docs.
+// A live value captured from the provider's /models endpoint (modelCtx) wins over this,
+// and providerConfig[p].contextWindow overrides everything. Matched: exact id → vendor-
+// stripped id → family substring. Keep ids lowercase except where the API is case-exact.
+const MODEL_CTX = {
+  // Claude — 1M is standard on the 4.6/4.8 generation; Haiku stays 200k.
+  "claude-opus-4-8": 1000000, "claude-sonnet-4-6": 1000000, "claude-haiku-4-5": 200000,
+  "opus": 1000000, "sonnet": 1000000, "haiku": 200000,
+  // DeepSeek — v4-pro / v4-flash both 1M (output up to 384k).
+  "deepseek-v4-pro": 1000000, "deepseek-v4-flash": 1000000,
+  // Gemini 2.5 — ~1,048,576 (no 2M on the 2.5 series; that was 1.5 Pro).
+  "gemini-2.5-pro": 1048576, "gemini-2.5-flash": 1048576,
+  // GLM (Z.AI).
+  "glm-4.6": 200000, "glm-4.5": 128000,
+  // Qwen3-Coder — plus/flash serve 1M via the API; the open "next" build is 256k.
+  "qwen3-coder-plus": 1048576, "qwen3-coder-flash": 1048576, "qwen3-coder-next": 262144,
+  // MiniMax (key stored lowercase — modelWindow lowercases before lookup).
+  "minimax-m3": 1000000, "minimax-m2": 204800,
+  // Kimi / Moonshot — current K2 series all serve 256k.
+  "kimi-k2.5": 262144, "kimi-k2": 262144, "kimi-latest": 262144,
+  // OpenAI — 4o family 128k; the 4.1 family ~1M; o-series reasoning 200k.
+  "gpt-4o": 128000, "gpt-4o-mini": 128000,
+  "gpt-4.1": 1047576, "gpt-4.1-mini": 1047576, "gpt-4.1-nano": 1047576,
+  "o3": 200000, "o4-mini": 200000,
+  // xAI Grok — 3 = 131k, 4 = 256k, 4.3 = 1M (legacy slugs now redirect to 4.3).
+  "grok-3": 131072, "grok-3-mini": 131072, "grok-4": 256000, "grok-4.3": 1000000,
+  // Mistral — Large 3 (2512) 256k; Codestral 25.08 256k, older 128k.
+  "mistral-large-latest": 256000, "mistral-large-2512": 256000,
+  "codestral-latest": 128000, "codestral-2508": 256000,
+  // Common open-weight models on the inference hosts (live values override these).
+  "deepseek-v3": 131072, "deepseek-r1": 131072, "qwen2.5-coder": 32768,
+};
+// Family fallbacks — matched by substring when an exact id isn't listed. Ordered
+// most-specific first (e.g. grok-4.3 before grok-4 before grok). Live + exact win.
+const MODEL_CTX_FAMILY = [
+  ["gemini-2.5", 1048576], ["gemini-1.5-pro", 2097152], ["gemini-1.5", 1048576],
+  ["deepseek-v4", 1000000], ["deepseek-v3", 131072], ["deepseek-r1", 131072],
+  ["claude-opus-4", 1000000], ["claude-sonnet-4", 1000000], ["claude-haiku", 200000],
+  ["glm-4.6", 200000], ["glm-4.5", 128000], ["glm-4", 128000],
+  ["qwen3-coder-plus", 1048576], ["qwen3-coder-flash", 1048576],
+  ["qwen3-coder", 262144], ["qwen3-next", 262144], ["qwen3", 262144],
+  ["qwen2.5-coder", 32768],
+  ["minimax-m3", 1000000], ["minimax", 204800],
+  ["kimi", 262144],
+  ["gpt-4.1", 1047576], ["gpt-4o", 128000], ["o4-mini", 200000],
+  ["grok-4.3", 1000000], ["grok-4", 256000], ["grok-3", 131072], ["grok", 131072],
+  ["mistral-large", 256000], ["codestral", 128000], ["mistral", 128000],
+  ["llama-3.3", 131072], ["llama-3.1", 131072], ["llama3.1", 131072],
+  ["llama-4", 1000000], ["llama", 131072],
+];
+// Resolve a model's context window (tokens) or null if unknown.
+function modelWindow(provider, model) {
+  const raw = String(model || "");
+  if (!raw) return null;
+  const live = ((reg.providerConfig || {})[provider] || {}).modelCtx || {};
+  if (Number(live[raw]) > 0) return Number(live[raw]);
+  const id = raw.toLowerCase();
+  const norm = id.replace(/^[a-z0-9_.-]+\//, "");   // drop "openai/", "deepseek-ai/", …
+  if (Number(live[norm]) > 0) return Number(live[norm]);
+  if (MODEL_CTX[id]) return MODEL_CTX[id];
+  if (MODEL_CTX[norm]) return MODEL_CTX[norm];
+  for (const [sub, w] of MODEL_CTX_FAMILY) if (id.includes(sub) || norm.includes(sub)) return w;
+  return null;
+}
+// Pull a model's context length from a /models list entry (field name varies by API:
+// OpenRouter context_length / top_provider.context_length, vLLM max_model_len, etc.).
+function ctxFromModelObj(m) {
+  if (!m || typeof m !== "object") return 0;
+  return Number(m.context_length || m.context_window || m.max_context_length ||
+    m.max_model_len || (m.top_provider && m.top_provider.context_length) || 0) || 0;
+}
+// Capture live per-model context windows from a provider's /models response, so the
+// usage meter + compaction budget self-tune to what the provider actually serves.
+function captureModelCtx(provider, data) {
+  try {
+    const map = {};
+    for (const m of (data || [])) {
+      const c = ctxFromModelObj(m);
+      if (m && m.id && c > 0) map[String(m.id)] = c;
+    }
+    if (!Object.keys(map).length) return;
+    reg.providerConfig = reg.providerConfig || {};
+    reg.providerConfig[provider] = reg.providerConfig[provider] || {};
+    reg.providerConfig[provider].modelCtx = map;
+    saveReg();
+  } catch {}
+}
 function ctxWindow(agent) {
   const a = reg.agents && reg.agents[agent];
   const p = (a && a.provider) || reg.defaultProvider || "claude";
   const pc = (reg.providerConfig || {})[p] || {};
-  return Number(pc.contextWindow) || CTX_WINDOW[p] || 128000;
+  if (Number(pc.contextWindow) > 0) return Number(pc.contextWindow);
+  const w = modelWindow(p, pc.model || (a && a.model));
+  return w > 0 ? w : (CTX_WINDOW[p] || 128000);
 }
 // Short "provider/model" tag shown in the chat history (which brain produced a line).
 function modelTag(agent) {
@@ -3589,7 +3686,7 @@ const server = http.createServer((req, res) => {
           const r = await fetch(modelsUrl, { headers: { authorization: "Bearer " + key }, signal });
           if (r.ok) {
             let models = [];
-            try { const j = await r.json(); models = proxy.cleanModels((j.data || []).map((m) => m.id)).sort().slice(0, 120); } catch {}
+            try { const j = await r.json(); captureModelCtx(provider, j.data); models = proxy.cleanModels((j.data || []).map((m) => m.id)).sort().slice(0, 120); } catch {}
             setConn(true, models);
             return done(true, "เชื่อมต่อแล้ว ✓", models);
           }
@@ -3618,7 +3715,7 @@ const server = http.createServer((req, res) => {
           try {
             const msig = AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined;
             const mr = await fetch(murl, { headers: { authorization: "Bearer " + pc.token }, signal: msig });
-            if (mr.ok) { const j = await mr.json(); models = proxy.cleanModels((j.data || []).map((m) => m.id)).sort().slice(0, 120); }
+            if (mr.ok) { const j = await mr.json(); captureModelCtx(provider, j.data); models = proxy.cleanModels((j.data || []).map((m) => m.id)).sort().slice(0, 120); }
           } catch {}
         }
         setConn(!authBad, models && models.length ? models : null);
