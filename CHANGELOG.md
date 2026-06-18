@@ -4,6 +4,16 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [Unreleased]
+
+**Fixed**
+- **Agents now know their gender — voice & words match** — an agent with a male voice
+  could still write/speak about itself as female (e.g. saying "ค่ะ"), so the voice you
+  heard and the words clashed. The gender is now read straight off the assigned voice
+  preset (♀/♂) and stated in the agent's persona, so it refers to itself consistently in
+  every language (Thai ครับ/ผม vs ค่ะ/ฉัน, pronouns, honorifics). Applies to both chat and
+  realtime calls.
+
 ## [0.9.3] — Voice fixes, smarter calls, macOS copy/paste
 
 **Fixed**

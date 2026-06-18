@@ -242,6 +242,16 @@ function personaText(a) {
   if (px.personality) p += `\n\nบุคลิกและน้ำเสียง:\n${px.personality}`;
   if (px.language) p += `\n\nภาษาหลักที่ใช้ตอบ: ${px.language}`;
   if (px.rules) p += `\n\nกฎการทำงาน (ต้องเคารพเสมอ):\n${px.rules}`;
+  // The assigned voice fixes the agent's gender (♀/♂ on the preset) — state it so
+  // the agent refers to itself consistently in any language (Thai ครับ/ผม vs ค่ะ/ฉัน,
+  // pronouns, honorifics) and never contradicts the voice the CEO actually hears.
+  if (a.voice && VOICE_PRESETS[a.voice]) {
+    p += voiceGender(a.voice) === "m"
+      ? "\n\nเพศของคุณ: ผู้ชาย — อ้างถึงตัวเองและพูดแบบผู้ชายเสมอในทุกภาษาที่ตอบ " +
+        "(ภาษาไทยใช้ ครับ/ผม) ให้ตรงกับเสียงพูดของคุณ ห้ามพูดแบบผู้หญิง"
+      : "\n\nเพศของคุณ: ผู้หญิง — อ้างถึงตัวเองและพูดแบบผู้หญิงเสมอในทุกภาษาที่ตอบ " +
+        "(ภาษาไทยใช้ ค่ะ/ฉัน/ดิฉัน) ให้ตรงกับเสียงพูดของคุณ ห้ามพูดแบบผู้ชาย";
+  }
   return p;
 }
 function pushRoster() { broadcast(rosterEvt(), false); }
@@ -4825,6 +4835,9 @@ function handleLive(req, sock) {
             `คุณรู้จักงานและออฟฟิศของตัวเองดี — ตอบเรื่องทีม โปรเจค สถานะงาน และช่วยคิด/วางแผนได้เต็มที่. ` +
             `ถ้าเจ้าของสั่งงานใหม่ ให้รับเรื่องไว้แล้วบอกว่าจะไปจัดการ/มอบหมายให้ทีมหลังวางสาย ` +
             `(ระหว่างสายยังลงมือทำงานหรือเรียกเครื่องมือไม่ได้).\n\n` +
+            (voiceGender(a.voice) === "m"
+              ? `เพศของคุณ: ผู้ชาย — พูดและอ้างถึงตัวเองแบบผู้ชายเสมอ (ใช้ ครับ/ผม) ให้ตรงกับเสียงของคุณ ห้ามพูดแบบผู้หญิง.\n\n`
+              : `เพศของคุณ: ผู้หญิง — พูดและอ้างถึงตัวเองแบบผู้หญิงเสมอ (ใช้ ค่ะ/ฉัน/ดิฉัน) ให้ตรงกับเสียงของคุณ ห้ามพูดแบบผู้ชาย.\n\n`) +
             `ทีมงาน:\n${team}\n\nสถานะออฟฟิศตอนนี้:\n${snap || "(ยังไม่มีโปรเจค/งานค้าง)"}\n\nบันทึกออฟฟิศ:\n${ctxNote}` }] },
         } }));
         toClient({ type: "ready" });
