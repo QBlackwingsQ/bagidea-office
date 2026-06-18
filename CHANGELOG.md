@@ -4,15 +4,16 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
-## [Unreleased]
+## [0.9.6] — Orb click-through
 
 **Fixed**
-- **Orb corners are now click-through to the desktop** — the orb's square window still
-  occupied its transparent corners, so anything beneath them (e.g. desktop icons) couldn't
-  be clicked. The window is now clipped to its circle (DPI-correct, sized from the real
-  physical pixels and re-applied when shown / on DPI changes), so the corners aren't part
-  of the window at all and clicks fall straight through. The JS hit-test + arrow cursor
-  remain for in-window precision.
+- **Orb no longer blocks the desktop around it** — the orb's window is wider than the
+  visible circle (Windows pads it to a min width) with transparent margins, so anything
+  beneath them — e.g. desktop icons — couldn't be clicked, and the orb looked off-centre.
+  The window is now clipped to a circle centred on the visible orb (sized from the real
+  client rect, re-applied on DPI/monitor changes): the margins are clipped away and click
+  straight through to the desktop, the orb sits dead-centre, and a stray title-bar sliver
+  on click is gone too.
 
 ## [0.9.5] — Per-model context windows, Kimi Code, orb polish
 
