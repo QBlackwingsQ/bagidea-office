@@ -2042,6 +2042,8 @@
   // overlay rebuilds it); entries older than 30 min are assumed orphaned.
   const RUNNING = new Map();   // task -> {agent, title, session, ts}
   function trackRunning(ev) {
+    // Daemon (re)started → nothing is running; drop any stale/replayed entries.
+    if (ev.type === "task.reset") { RUNNING.clear(); renderRunning(); return; }
     if (ev.theater || String(ev.agent || "").includes("#")) return;
     if (ev.type === "task.started")
       RUNNING.set(ev.task, { agent: ev.agent, title: ev.title || "",

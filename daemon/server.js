@@ -5111,6 +5111,11 @@ server.on("error", (e) => {
 });
 
 const OEP_PORT = process.env.OEP_PORT || 8787;  // override only for isolated tests
-server.listen(OEP_PORT, "127.0.0.1", () =>
-  console.log(`[oep] http+ws listening :${OEP_PORT}`)
-);
+server.listen(OEP_PORT, "127.0.0.1", () => {
+  console.log(`[oep] http+ws listening :${OEP_PORT}`);
+  // Fresh boot ⇒ nothing is running (runChildren starts empty). A task.started left
+  // dangling in the journal by the previous (killed) run would otherwise REPLAY on the
+  // next client connect and pin agents as "working" forever. Journal a reset so it
+  // replays last and clears any stale working state on the wallpaper + overlay.
+  broadcast({ type: "task.reset" });
+});

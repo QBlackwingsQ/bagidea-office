@@ -228,6 +228,24 @@ func handle(evt: Dictionary) -> void:
 		return
 	if type == "world.pos":
 		return  # our own position stream echoing back — not an agent event
+	if type == "task.reset":
+		# Daemon (re)started → nothing is running. Clear every stale "working" state so the
+		# wallpaper stops showing ghosts of tasks the restart already killed (a replayed
+		# task.started with no matching task.completed would otherwise pin agents forever).
+		for aid in agents.keys():
+			var ag: Dictionary = agents[aid]
+			for tk in ag.tasks.keys():
+				world.board_set(tk, "done", aid)
+				world.board_clear_if_finished(tk)
+			ag.tasks.clear()
+			if ag.state == "working":
+				_release_desk(ag)
+				_set_state(ag, "idle")
+				ag.node.set_status("")
+		awaiting_delivery.clear()
+		for sub in ghosts.keys():
+			_despawn_ghost(sub, true)
+		return
 	if not evt.has("agent") and not evt.has("agents"):
 		return  # agent-less events must never spawn a default "agent" ghost
 	# Replay Theater was removed — stale theater frames from old journals
