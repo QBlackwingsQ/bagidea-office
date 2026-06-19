@@ -67,14 +67,10 @@ ENGLISH.md
 /Warrix.png
 /preview.jpg
 
-# Only the CORE plugins ship in this repo. Plugins installed at runtime via
-# `bagidea plugin install` (each its own git clone) are never tracked here.
+# A fresh install ships with NO bundled plugins — the office starts empty and the
+# owner adds what they want from the Plugins Hub (each its own GitHub clone). Nothing
+# under plugins/ is tracked.
 plugins/*
-!plugins/music
-!plugins/calculator
-# ...and even within the core plugins, runtime data + user media stay out.
-plugins/*/data/
-plugins/music/tracks/
 daemon/layout.json
 daemon/i18n/
 dist/
