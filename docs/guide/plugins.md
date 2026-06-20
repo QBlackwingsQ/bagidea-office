@@ -113,6 +113,19 @@ its `upload` route accepts a raw file body via `readBodyRaw`).
 > and send it: `curl ... --data-binary @body.json`. The daemon and panels handle UTF-8
 > fine; only the inline command line is unsafe.
 
+> **Don't ASCII-strip filenames or text (the office speaks 14 languages):** a
+> sanitizer like `name.replace(/[^\w.\- ]/g, "_")` deletes every Thai/Chinese/Arabic
+> character (`\w` is ASCII-only) — that turned Thai song names into `____` in the Music
+> Player. Strip only what's unsafe and keep all letters:
+> ```js
+> const safe = raw.split(/[\\/]/).pop()        // basename → blocks ../ traversal
+>   .replace(/[\x00-\x1f<>:"|?*]/g, "_")        // control + Windows-reserved → _
+>   .replace(/^\.+/, "").trim();                // no leading dots
+> ```
+> In `panel.html`, give `font-family` a multilingual fallback (e.g.
+> `system-ui,"Segoe UI","Leelawadee UI",Tahoma,"Noto Sans Thai","Noto Sans CJK",sans-serif`)
+> so non-Latin text renders instead of blank glyphs.
+
 ---
 
 ## 4. `panel.html` — the UI
