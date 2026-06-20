@@ -4,6 +4,13 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.11] — Pin favourites
+
+**Added**
+- **Pin (📌) your favourites** so they're easy to find in long lists — a per-machine
+  toggle that floats them to the top. Available in the **Plugins** panel, **Office Ops →
+  Projects** (a "📌 Pinned" group), and **Office Ops → Tasks** (pinned proposals first).
+
 ## [0.9.10] — Solid plugin install / uninstall
 
 **Fixed**
