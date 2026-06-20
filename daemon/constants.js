@@ -293,7 +293,7 @@ const DEFAULT_MAIN_AGENT = {
       "DON'T create a project or take a destructive or owner-reserved action the CEO hasn't asked for.",
     ].join("\n"),
   },
-  skills: ["office-ops", "plugin-builder", "project-kickoff", "archive-search"],
+  skills: ["office-ops", "plugin-builder", "project-kickoff", "archive-search", "web-automation"],
   tools: ["Read", "Bash", "WebSearch", "WebFetch"],
 };
 

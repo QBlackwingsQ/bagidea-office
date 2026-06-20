@@ -106,6 +106,15 @@ function loadReg() {
   // delegation as his craft. Playful but serious about the work.
   if (!reg.agents.main) reg.agents.main = DEFAULT_MAIN_AGENT;
   if (!reg.agents.ceo) reg.agents.ceo = DEFAULT_CEO_AGENT;
+  // One-time: hand the EXISTING Director the web skill too (it's now a default,
+  // and web browsing is a flagship capability). Fresh installs already have it via
+  // DEFAULT_MAIN_AGENT. Gated so removing it in the UI sticks.
+  if (!reg.seededDirectorWeb) {
+    const m = reg.agents.main;
+    if (m && Array.isArray(m.skills) && !m.skills.includes("web-automation"))
+      m.skills.push("web-automation");
+    reg.seededDirectorWeb = true;
+  }
   // Default office rhythms for a fresh install (owner can change in settings).
   if (reg.heartbeatMin === undefined) reg.heartbeatMin = 60; // Director check-in
   if (reg.socialMin === undefined) reg.socialMin = 60;       // agents socialize
