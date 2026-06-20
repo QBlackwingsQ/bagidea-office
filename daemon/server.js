@@ -996,6 +996,10 @@ const WINPROJ = path.join(__dirname, "winproj.ps1");
 const LIVEVIEW = path.join(__dirname, "liveview.ps1");
 
 function winproj(action, id, cb) {
+  // Windows-only: project-window show/hide/stop is driven by a PowerShell helper that
+  // walks the win32 window tree. On macOS/Linux there's no equivalent window tracking
+  // (projects just open in a terminal), so this is a graceful no-op.
+  if (process.platform !== "win32") { if (cb) cb(null, ""); return; }
   const { execFile } = require("child_process");
   execFile("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass",
     "-File", WINPROJ, action, String(id || "")],
@@ -2599,13 +2603,16 @@ function shellExePath() {
 // both point at the shell binary so the toggle and the tray stay in sync.
 const MAC_PLIST = path.join(require("os").homedir(),
   "Library", "LaunchAgents", "com.bagidea.office.plist");
+// Linux: a standard XDG autostart entry — every major DE reads this on login.
+const LINUX_DESKTOP = path.join(require("os").homedir(),
+  ".config", "autostart", "bagidea-office.desktop");
 function isAutostart(cb) {
   if (process.platform === "win32") {
     return require("child_process").execFile("reg",
       ["query", RUN_KEY, "/v", RUN_NAME], (e) => cb(!e));
   }
   if (process.platform === "darwin") return cb(fs.existsSync(MAC_PLIST));
-  return cb(false);
+  return cb(fs.existsSync(LINUX_DESKTOP));
 }
 function setAutostart(on, cb) {
   const { execFile } = require("child_process");
@@ -2636,7 +2643,22 @@ function setAutostart(on, cb) {
       return cb(true);
     } catch { return cb(false); }
   }
-  cb(false);
+  // Linux: write/remove an XDG autostart .desktop launching the shell binary.
+  try {
+    if (on) {
+      fs.mkdirSync(path.dirname(LINUX_DESKTOP), { recursive: true });
+      fs.writeFileSync(LINUX_DESKTOP,
+        "[Desktop Entry]\n" +
+        "Type=Application\n" +
+        "Name=BagIdea Office\n" +
+        "Exec=" + shellExePath() + "\n" +
+        "X-GNOME-Autostart-enabled=true\n" +
+        "NoDisplay=true\n");
+    } else if (fs.existsSync(LINUX_DESKTOP)) {
+      fs.unlinkSync(LINUX_DESKTOP);
+    }
+    return cb(true);
+  } catch { return cb(false); }
 }
 
 // ---------------------------------------------------------------- channels
@@ -3510,6 +3532,26 @@ const server = http.createServer((req, res) => {
             // We use AppleScript to ensure it opens a fresh window at the right path
             const script = `tell application "Terminal" to do script "cd '${dir}'"`;
             spawn("osascript", ["-e", script], { detached: true });
+          } else {
+            // Linux: open a terminal at `dir` running the command. The Windows psCmd is
+            // `-Command "<cmd> #marker"`; extract <cmd> (the #marker is also a bash
+            // comment, so it's harmless). We don't track the window — winproj() is a
+            // no-op on Linux, so hide/resume just don't apply.
+            const m = String(psCmd).match(/^-Command "([\s\S]*)"$/);
+            const inner = m ? m[1] : "";
+            const bashLine = `cd ${JSON.stringify(dir)}; ${inner ? inner + "; " : ""}exec bash`;
+            const terms = [
+              ["x-terminal-emulator", ["-e", "bash", "-lc", bashLine]],
+              ["gnome-terminal", ["--working-directory=" + dir, "--", "bash", "-lc", bashLine]],
+              ["konsole", ["--workdir", dir, "-e", "bash", "-lc", bashLine]],
+              ["xfce4-terminal", ["--working-directory=" + dir, "-e", "bash -lc " + JSON.stringify(bashLine)]],
+              ["xterm", ["-e", "bash", "-lc", bashLine]],
+            ];
+            (function tryTerm(i) {
+              if (i >= terms.length) return;
+              const c = spawn(terms[i][0], terms[i][1], { detached: true, stdio: "ignore" });
+              c.on("error", () => tryTerm(i + 1));
+            })(0);
           }
         };
         if (mode === "folder") {
@@ -4145,6 +4187,11 @@ const server = http.createServer((req, res) => {
       } else if (process.platform === "darwin") {
         const app = path.join(gdir, "bin-mac", "Godot.app", "Contents", "MacOS", "Godot");
         godot = fs.existsSync(app) ? app : "Godot";
+      } else {
+        // Linux/other: a bundled binary under godot/bin-linux/, else $BAGIDEA_GODOT,
+        // else rely on `godot` on PATH (installed by install-linux.sh).
+        const bin = path.join(gdir, "bin-linux", "godot");
+        godot = fs.existsSync(bin) ? bin : (process.env.BAGIDEA_GODOT || "godot");
       }
       const shellUp = fs.existsSync(path.join(tmp, "bagidea_shell_alive"));
       if (!shellUp && fs.existsSync(godot)) {
