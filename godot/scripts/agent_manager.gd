@@ -1182,6 +1182,18 @@ func _start_collab(task: String, members: Array, topic: String, theatrical := fa
 	if collabs.has(task): return
 	var center_name := _free_gather_center()
 	var center: Vector3 = world.wp(center_name)
+	# A missing/not-yet-ready anchor resolves to (0,0,0), which piles the WHOLE
+	# huddle on the world origin (the "everyone stacked in one clump" bug). Fall
+	# back through other real anchors, then the floor centre — never gather on ZERO.
+	if center == Vector3.ZERO:
+		for alt in ["meeting_c", "ops_c", "lobby_c", "exec_c", "cafe_c", "rec_c"]:
+			var p: Vector3 = world.wp(alt)
+			if p != Vector3.ZERO:
+				center = p
+				center_name = alt
+				break
+	if center == Vector3.ZERO:
+		center = Vector3(0.0, 0.86, 0.0)
 	var is_primary := (center_name == "meeting_c")
 	var info := {"members": members.duplicate(), "center": center,
 		"center_name": center_name, "is_primary": is_primary,
