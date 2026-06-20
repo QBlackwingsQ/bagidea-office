@@ -187,5 +187,8 @@
   "upd_latest": "Terbaru",
   "upd_cta": "Lihat yang baru →",
   "d_install_lin_h": "Linux — penginstal sekali jalan (eksperimental 🧪)",
-  "d_install_lin_p": "Ubuntu/Debian (apt) untuk saat ini. Buka terminal dan jalankan perintah di bawah. Perintah ini memasang dependensi (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, utilitas PulseAudio, Godot 4.6.3), membangun shell desktop, menyambungkan hook Claude, membuat symlink bagidea ke ~/.local/bin, dan menambahkan entri autostart XDG. Di X11/Xorg, office menyatu sebagai wallpaper desktop yang sebenarnya; di Wayland, ia beralih ke jendela layar penuh yang disematkan di bawah segalanya. Mohon laporkan masalah dengan menyertakan distro, desktop, dan keluaran dari \"echo $XDG_SESSION_TYPE\" Anda."
+  "d_install_lin_p": "Ubuntu/Debian (apt) untuk saat ini. Buka terminal dan jalankan perintah di bawah. Perintah ini memasang dependensi (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, utilitas PulseAudio, Godot 4.6.3), membangun shell desktop, menyambungkan hook Claude, membuat symlink bagidea ke ~/.local/bin, dan menambahkan entri autostart XDG. Di X11/Xorg, office menyatu sebagai wallpaper desktop yang sebenarnya; di Wayland, ia beralih ke jendela layar penuh yang disematkan di bawah segalanya. Mohon laporkan masalah dengan menyertakan distro, desktop, dan keluaran dari \"echo $XDG_SESSION_TYPE\" Anda.",
+  "f_web_t": "Agen menjelajahi web",
+  "f_web_d": "Centang satu skill dan agen mengendalikan browser sungguhan — membuka halaman, mengklik, mengetik, mengisi formulir, dan mengambil tangkapan layar — untuk menjalankan tugas di web untukmu. Tonton secara langsung atau biarkan ia bekerja diam-diam di latar belakang; ia menggunakan profil terisolasi (tidak masuk akun) dan setiap tindakan tetap melewati Pusat Keamanan.",
+  "foot_pitch": "Pitch deck"
 }

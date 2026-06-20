@@ -187,5 +187,8 @@
   "upd_latest": "Última",
   "upd_cta": "Ver novedades →",
   "d_install_lin_h": "Linux — instalador de un solo paso (experimental 🧪)",
-  "d_install_lin_p": "Ubuntu/Debian (apt) por ahora. Abre una terminal y ejecuta el comando de abajo. Instala las dependencias (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, utilidades de PulseAudio, Godot 4.6.3), compila el shell de escritorio, conecta los hooks de Claude, crea un enlace simbólico de bagidea en ~/.local/bin y añade una entrada de autoarranque XDG. En X11/Xorg, la oficina se integra como el verdadero fondo de pantalla del escritorio; en Wayland, recurre a una ventana de pantalla completa fijada por debajo de todo. Informa de los problemas indicando tu distro, tu escritorio y la salida de \"echo $XDG_SESSION_TYPE\"."
+  "d_install_lin_p": "Ubuntu/Debian (apt) por ahora. Abre una terminal y ejecuta el comando de abajo. Instala las dependencias (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, utilidades de PulseAudio, Godot 4.6.3), compila el shell de escritorio, conecta los hooks de Claude, crea un enlace simbólico de bagidea en ~/.local/bin y añade una entrada de autoarranque XDG. En X11/Xorg, la oficina se integra como el verdadero fondo de pantalla del escritorio; en Wayland, recurre a una ventana de pantalla completa fijada por debajo de todo. Informa de los problemas indicando tu distro, tu escritorio y la salida de \"echo $XDG_SESSION_TYPE\".",
+  "f_web_t": "Los agentes navegan por la web",
+  "f_web_d": "Marca una habilidad y un agente conduce un navegador real — abre páginas, hace clic, escribe, rellena formularios y captura pantallas — para ejecutar tareas en la web por ti. Míralo en vivo o déjalo trabajar discretamente en segundo plano; usa un perfil aislado (sin sesión iniciada) y cada acción sigue pasando por el Centro de Seguridad.",
+  "foot_pitch": "Pitch deck"
 }

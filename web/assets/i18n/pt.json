@@ -187,5 +187,8 @@
   "upd_latest": "Mais recente",
   "upd_cta": "Ver novidades →",
   "d_install_lin_h": "Linux — instalador de uma etapa (experimental 🧪)",
-  "d_install_lin_p": "Ubuntu/Debian (apt) por enquanto. Abra um terminal e execute o comando abaixo. Ele instala as dependências (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, utilitários do PulseAudio, Godot 4.6.3), compila o shell de desktop, conecta os hooks do Claude, cria um symlink do bagidea em ~/.local/bin e adiciona uma entrada de autostart XDG. No X11/Xorg, o escritório se integra como o verdadeiro papel de parede da área de trabalho; no Wayland, recorre a uma janela em tela cheia fixada abaixo de tudo. Por favor, relate problemas informando sua distro, seu desktop e a saída de \"echo $XDG_SESSION_TYPE\"."
+  "d_install_lin_p": "Ubuntu/Debian (apt) por enquanto. Abra um terminal e execute o comando abaixo. Ele instala as dependências (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, utilitários do PulseAudio, Godot 4.6.3), compila o shell de desktop, conecta os hooks do Claude, cria um symlink do bagidea em ~/.local/bin e adiciona uma entrada de autostart XDG. No X11/Xorg, o escritório se integra como o verdadeiro papel de parede da área de trabalho; no Wayland, recorre a uma janela em tela cheia fixada abaixo de tudo. Por favor, relate problemas informando sua distro, seu desktop e a saída de \"echo $XDG_SESSION_TYPE\".",
+  "f_web_t": "Os agentes navegam na web",
+  "f_web_d": "Marque uma habilidade e um agente conduz um navegador real — abre páginas, clica, digita, preenche formulários e captura telas — para executar tarefas na web por você. Assista ao vivo ou deixe-o trabalhar discretamente em segundo plano; ele usa um perfil isolado (sem login) e cada ação ainda passa pelo Centro de Segurança.",
+  "foot_pitch": "Pitch deck"
 }

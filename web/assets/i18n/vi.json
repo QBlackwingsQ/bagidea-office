@@ -187,5 +187,8 @@
   "upd_latest": "Mới nhất",
   "upd_cta": "Xem điểm mới →",
   "d_install_lin_h": "Linux — trình cài đặt một bước (thử nghiệm 🧪)",
-  "d_install_lin_p": "Hiện tại là Ubuntu/Debian (apt). Mở một terminal và chạy lệnh bên dưới. Nó cài đặt các phụ thuộc (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, các tiện ích PulseAudio, Godot 4.6.3), dựng desktop shell, đấu nối các hook của Claude, tạo symlink bagidea vào ~/.local/bin, và thêm một mục tự khởi động XDG. Trên X11/Xorg, văn phòng được gắn làm hình nền desktop thực sự; trên Wayland, nó chuyển sang cửa sổ toàn màn hình được ghim bên dưới mọi thứ. Vui lòng báo cáo sự cố kèm theo distro, desktop của bạn, và kết quả của \"echo $XDG_SESSION_TYPE\"."
+  "d_install_lin_p": "Hiện tại là Ubuntu/Debian (apt). Mở một terminal và chạy lệnh bên dưới. Nó cài đặt các phụ thuộc (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, các tiện ích PulseAudio, Godot 4.6.3), dựng desktop shell, đấu nối các hook của Claude, tạo symlink bagidea vào ~/.local/bin, và thêm một mục tự khởi động XDG. Trên X11/Xorg, văn phòng được gắn làm hình nền desktop thực sự; trên Wayland, nó chuyển sang cửa sổ toàn màn hình được ghim bên dưới mọi thứ. Vui lòng báo cáo sự cố kèm theo distro, desktop của bạn, và kết quả của \"echo $XDG_SESSION_TYPE\".",
+  "f_web_t": "Agent duyệt web",
+  "f_web_d": "Đánh dấu một kỹ năng và một agent sẽ điều khiển một trình duyệt thật — mở trang, nhấp chuột, gõ phím, điền biểu mẫu và chụp màn hình — để thực hiện các tác vụ trên web thay bạn. Xem trực tiếp hoặc để nó âm thầm làm việc trong nền; nó dùng một hồ sơ biệt lập (chưa đăng nhập) và mọi hành động vẫn phải đi qua Trung tâm Bảo mật.",
+  "foot_pitch": "Bản thuyết trình giới thiệu"
 }

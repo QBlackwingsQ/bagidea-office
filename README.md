@@ -6,6 +6,8 @@
 > Security desk, holds meetings, learns new skills, and the lights follow your
 > real local time.
 
+> 🌐 **[Website](https://bagidea.github.io/bagidea-office/)** · 🎤 **[Pitch deck](https://bagidea.github.io/bagidea-office/pitch/)** · 📖 **[Docs](docs/guide/getting-started.md)**
+
 Not a dashboard. Not a chat window. A **world** that renders the true state of
 your Claude agents — Claude Code sessions, headless runs, custom scripts — as
 living pixel-art employees behind your desktop icons, and gives them a **society**.
