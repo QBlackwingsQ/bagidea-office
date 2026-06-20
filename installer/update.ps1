@@ -31,11 +31,18 @@ if (-not (Test-Path (Join-Path $root ".git"))) {
 }
 
 # 2) Pull the latest code.
+#    The two settings.json are tracked but get rewritten per-machine (hook paths),
+#    so discard those local edits first or --ff-only would abort when upstream
+#    also touched them. We re-wire the hooks right after the pull.
 Write-Host "  [2/4] Pulling latest code..." -ForegroundColor DarkCyan
+git checkout -- .claude/settings.json workspace/.claude/settings.json 2>$null
 $before = git rev-parse HEAD
 git pull --ff-only
 $after = git rev-parse HEAD
 if ($before -eq $after) { Write-Host "  - Already up to date" -ForegroundColor DarkGray }
+
+# Re-point the Claude hooks at this install (the pull restored the dev paths).
+& (Join-Path $PSScriptRoot "wire-hooks.ps1") -App $root
 
 # 3) Rebuild the shell only when its source changed (and cargo exists).
 $shellChanged = git diff --name-only $before $after -- shell/ | Measure-Object -Line

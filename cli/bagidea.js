@@ -252,7 +252,7 @@ async function main() {
     return;
   }
 if (cmd === "update") {
-  if (process.platform === "darwin") return info(`On macOS, run ${c.accent}git pull${c.reset} and then ${c.accent}./build-mac.sh${c.reset} to update.`);
+  if (process.platform === "darwin") return info(`On macOS, run ${c.accent}git checkout -- .claude/settings.json workspace/.claude/settings.json && git pull && ./build-mac.sh${c.reset} to update (the checkout drops the per-machine hook paths so the pull is clean; build-mac.sh re-wires them).`);
   if (process.platform !== "win32") {
     // Linux: a helper script does git pull + rebuild-if-changed + restart.
     const sh = path.join(ROOT, "installer", "update-linux.sh");

@@ -296,16 +296,14 @@ if ((Test-Path $gexe) -and (Test-Path $ico)) {
 } else { Skip "skipped (Godot or logo.ico missing)" }
 
 # ---- hook paths: the permission/notify hooks use absolute paths --------------
+# The committed settings.json carry the dev machine's path; regenerate them so
+# the permission hook (Security Center) and task hooks (Mission Control) resolve
+# to THIS install. (A regex rewrite was unreliable against the escaped quotes in
+# the JSON command strings, which silently left the hooks broken.)
 Step 10 "Point the Claude hooks at this install"
-foreach ($cfg in @("$APP\.claude\settings.json", "$APP\workspace\.claude\settings.json")) {
-  if (Test-Path $cfg) {
-    $txt = Get-Content $cfg -Raw
-    $txt = [regex]::Replace($txt, '"command":\s*"[^"]*?([\w-]+\.ps1)"', { param($m)
-      '"command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"' +
-      ($APP -replace '\\','\\') + '\\daemon\\' + $m.Groups[1].Value + '\""' })
-    Set-Content $cfg $txt -Encoding utf8
-  }
-}
+# Use $APP (the just-cloned repo), not $PSScriptRoot: the web one-liner pipes
+# this script through `iex`, where $PSScriptRoot is empty.
+& (Join-Path $APP "installer\wire-hooks.ps1") -App $APP
 Ok "hooks now resolve to the install path"
 
 # ---- CLI on PATH + Start Menu shortcut ---------------------------------------

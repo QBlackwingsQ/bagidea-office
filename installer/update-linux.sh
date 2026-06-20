@@ -17,11 +17,17 @@ pkill -f "godot .*--wallpaper" 2>/dev/null || true
 sleep 1
 
 # 2) Pull latest.
+#    settings.json is tracked but rewritten per-machine (hook paths); discard
+#    those local edits so --ff-only won't abort, then re-wire after the pull.
 echo "  [2/4] Pulling latest code..."
+git checkout -- .claude/settings.json workspace/.claude/settings.json 2>/dev/null || true
 before="$(git rev-parse HEAD)"
 git pull --ff-only || true
 after="$(git rev-parse HEAD)"
 [ "$before" = "$after" ] && echo "  - Already up to date"
+
+# Re-point the Claude hooks at this install (the pull restored the dev paths).
+bash "$ROOT/installer/wire-hooks.sh" "$ROOT"
 
 # 3) Rebuild the shell only if its source changed.
 if [ "$before" != "$after" ] && ! git diff --quiet "$before" "$after" -- shell/; then

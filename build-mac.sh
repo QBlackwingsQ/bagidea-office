@@ -66,30 +66,7 @@ echo "    + compiling the shell - more 'Compiling ...' lines; another few minute
 
 # ---- 4. Wiring --------------------------------------------------------------
 echo "[5/6] wiring Claude Code hooks for this machine…"
-cat > "$ROOT/.claude/settings.json" <<JSON
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/hook.js\" task.started" } ] }
-    ],
-    "PostToolUse": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/hook.js\" task.progress" } ] }
-    ],
-    "Stop": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/hook.js\" task.completed" } ] }
-    ]
-  }
-}
-JSON
-cat > "$ROOT/workspace/.claude/settings.json" <<JSON
-{
-  "hooks": {
-    "PreToolUse": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/perm.js\"", "timeout": 60 } ] }
-    ]
-  }
-}
-JSON
+bash "$ROOT/installer/wire-hooks.sh" "$ROOT"
 
 # ---- 5. CLI Setup -----------------------------------------------------------
 echo "[6/6] setting up the 'bagidea' CLI command..."

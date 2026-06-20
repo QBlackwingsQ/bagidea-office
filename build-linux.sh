@@ -75,30 +75,7 @@ echo "[3/6] building the native shell (first build takes several minutes — NOT
 
 # ---- 4. Claude Code hooks (Node — same as macOS) -----------------------------
 echo "[4/6] wiring Claude Code hooks..."
-cat > "$ROOT/.claude/settings.json" <<JSON
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/hook.js\" task.started" } ] }
-    ],
-    "PostToolUse": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/hook.js\" task.progress" } ] }
-    ],
-    "Stop": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/hook.js\" task.completed" } ] }
-    ]
-  }
-}
-JSON
-cat > "$ROOT/workspace/.claude/settings.json" <<JSON
-{
-  "hooks": {
-    "PreToolUse": [
-      { "hooks": [ { "type": "command", "command": "node \"$ROOT/daemon/perm.js\"", "timeout": 60 } ] }
-    ]
-  }
-}
-JSON
+bash "$ROOT/installer/wire-hooks.sh" "$ROOT"
 
 # ---- 5. CLI on PATH ----------------------------------------------------------
 echo "[5/6] setting up the 'bagidea' command..."
