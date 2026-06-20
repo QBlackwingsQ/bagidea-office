@@ -1,0 +1,4 @@
+# Shell scripts MUST be LF — a CRLF shebang (#!/usr/bin/env bash\r) breaks on Linux/macOS.
+*.sh text eol=lf
+# The CLI launcher is a shebang script too (no extension).
+cli/bagidea text eol=lf
