@@ -362,6 +362,16 @@ irm https://raw.githubusercontent.com/bagidea/bagidea-office/main/installer/inst
 curl -fsSL https://raw.githubusercontent.com/bagidea/bagidea-office/main/installer/install-mac.sh | bash
 ```
 
+**Linux (Ubuntu/Debian — 🧪 experimental):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/bagidea/bagidea-office/main/installer/install-linux.sh | bash
+```
+> 🧪 **Linux is experimental** — please help us harden it! On **X11/Xorg** the office
+> renders as the live desktop wallpaper; on **Wayland** it falls back to a fullscreen
+> window pinned below. If the build or wallpaper doesn't work on your distro/DE, please
+> [open an issue](https://github.com/bagidea/bagidea-office/issues) with your distro,
+> desktop, and `echo $XDG_SESSION_TYPE`.
+
 > First time only: open a **new** terminal, run `claude` once to log in to Claude,
 > then `bagidea start`. Safe to re-run — a re-run does a `git pull` and your data is kept.
 > Install didn't finish? See **[troubleshooting → install](docs/guide/troubleshooting.md#แก้ปัญหาการติดตั้ง)**

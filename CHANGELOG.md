@@ -4,6 +4,22 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.12] — Linux support (experimental) + macOS CLI fix
+
+**Added**
+- **Linux support — experimental/beta 🧪.** One-line installer for Ubuntu/Debian
+  (`installer/install-linux.sh` → apt deps, Node 20, Rust, Godot 4.6, WebKitGTK, X11
+  tools, builds the shell, wires hooks, sets up the `bagidea` CLI + login autostart).
+  On **X11/Xorg** the office attaches as the live desktop wallpaper (wmctrl below+sticky,
+  xprop desktop type); on **Wayland** it falls back to a fullscreen window pinned below.
+  Daemon/CLI gained the Linux branches (godot path, XDG autostart, terminal launch, audio
+  playback, update/uninstall). **Please report issues** — distro, desktop, `$XDG_SESSION_TYPE`.
+
+**Fixed**
+- **macOS: `bagidea start` finds the shell binary** — `findShellExe()` was hardcoded to
+  `.exe`; it now resolves the no-extension binary on macOS/Linux (release→debug fallback),
+  with cross-platform tests. Thanks @misternay (#9).
+
 ## [0.9.11] — Pin favourites
 
 **Added**

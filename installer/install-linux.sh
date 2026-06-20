@@ -16,8 +16,11 @@ BRANCH="${BAGIDEA_BRANCH:-main}"
 
 echo ""
 echo "  ==========================================="
-echo "   BagIdea Office - LINUX WEB INSTALLER"
+echo "   BagIdea Office - LINUX WEB INSTALLER  (BETA)"
 echo "  ==========================================="
+echo "   Linux support is EXPERIMENTAL. If anything fails to build or the wallpaper"
+echo "   doesn't attach, please report it (your distro, desktop, \$XDG_SESSION_TYPE):"
+echo "   https://github.com/bagidea/bagidea-office/issues"
 echo ""
 
 if ! command -v git &> /dev/null; then
@@ -41,4 +44,7 @@ chmod +x build-linux.sh
 echo ""
 echo "  Done! BagIdea Office is ready at $APP_DIR"
 echo "  Open a new terminal and run:  bagidea start"
+echo ""
+echo "  🧪 This is the experimental Linux build — feedback welcome:"
+echo "     https://github.com/bagidea/bagidea-office/issues"
 echo ""
