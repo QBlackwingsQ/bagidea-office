@@ -1,0 +1,54 @@
+# Contributors
+
+BagIdea Office is built in the open. Huge thanks to everyone who has helped — by
+sending a pull request, reporting an issue, or testing on a platform we couldn't.
+
+## Maintainer
+
+- **[@bagidea](https://github.com/bagidea)** — creator & maintainer (BagIdea Innovation Co., Ltd.)
+
+## Community contributors
+
+Thank you for the pull requests that made the office better — especially the
+early macOS support, when the project was Windows-only:
+
+- **[@spondanai](https://github.com/spondanai)** — macOS support & installer resilience
+  ([#4](https://github.com/bagidea/bagidea-office/pull/4)), plus an early refactor +
+  automated tests pass ([#1](https://github.com/bagidea/bagidea-office/pull/1)).
+- **[@misternay](https://github.com/misternay)** (Ritthikiat Jindajak) — fixed the
+  CLI shell-binary finder on macOS/Linux, with cross-platform tests
+  ([#9](https://github.com/bagidea/bagidea-office/pull/9)).
+
+> Want to be on this list? Open a PR — see [docs/guide/plugin-hub.md](docs/guide/plugin-hub.md)
+> for plugins, or fix anything in the repo. Every merged contribution is credited here
+> and on GitHub's Contributors graph.
+
+## Built with Claude Code
+
+Much of the implementation was pair-built with **Claude** (Anthropic) via Claude Code.
+Commits carry a `Co-Authored-By: Claude …` trailer to credit that honestly — which is
+why **Claude** appears on the Contributors graph.
+
+---
+
+## For maintainers — merging PRs so credit is preserved
+
+GitHub only lists someone as a contributor when a commit **authored by them** (with a
+GitHub-linked email) lands on the default branch. A squash-merge that re-authors the
+commit to the maintainer **erases the contributor's credit** (this is why an earlier
+merged PR didn't show up).
+
+When merging a community PR, preserve authorship:
+
+- **Preferred — a real merge commit** (keeps every original commit + author):
+  ```bash
+  gh pr merge <num> --merge
+  ```
+- **If you squash**, make sure the contributor is still credited — squash keeps the
+  PR author as the commit author by default, but verify, and keep any
+  `Co-authored-by:` trailers in the squashed message:
+  ```bash
+  gh pr merge <num> --squash   # then check `git log -1 --format='%an <%ae>'`
+  ```
+- Never hand-cherry-pick a contributor's work into a commit authored by you without a
+  `Co-authored-by: Name <email>` trailer.

@@ -692,6 +692,10 @@ this makes them employable"*).
 - [x] Linux wallpaper backend (experimental — X11 EWMH; Wayland fullscreen-below fallback)
 - [ ] Signed binary releases (skip the Rust build on install)
 
+## Contributors
+
+Built in the open, with help from the community — special thanks to **[@spondanai](https://github.com/spondanai)** (early macOS support) and **[@misternay](https://github.com/misternay)** (macOS/Linux shell-finder fix). See **[CONTRIBUTORS.md](CONTRIBUTORS.md)**. PRs welcome — every merged contribution is credited there and on the Contributors graph.
+
 ## License
 
 [MIT](LICENSE) © BagIdea — free to use, modify and share. Bundled art/sound packs keep their own (free/CC0) licenses; see [Art assets](#art-assets).
