@@ -687,8 +687,10 @@
   /* Tabs share the row evenly — one line ALWAYS, scrollbar or not. */
   .tabs { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
   .tabs .tab {
-    flex: 1 1 auto; text-align: center;
-    font-size: 11px; padding: 5px 10px; border-radius: 8px; cursor: pointer;
+    /* ~4 per row so they wrap into balanced rows (7 tabs → 4+3, 6 → 4+2)
+       and each row stretches to fill — never one lone tab spanning a whole row. */
+    flex: 1 1 21%; text-align: center;
+    font-size: 11px; padding: 5px 8px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--line); color: var(--dim); background: rgba(255,255,255,0.03);
     white-space: nowrap;
   }
