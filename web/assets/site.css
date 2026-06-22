@@ -195,6 +195,12 @@ a.sp-chip:hover .sp-chip-av { border-color:var(--accent); }
 .sp-how ol li b { color:var(--text); }
 .sp-how .muted { margin-top:14px; font-size:13px; }
 
+/* social links (footer) */
+.social { display:flex; gap:14px; margin-top:18px; }
+.social a { color:var(--dim); transition:color .15s, transform .15s; }
+.social a:hover { color:var(--accent); transform:translateY(-2px); }
+.social svg { width:22px; height:22px; display:block; }
+
 /* contributors */
 .contrib-grid { display:flex; flex-wrap:wrap; justify-content:center; gap:22px 30px; margin-top:42px; }
 .contrib { display:flex; flex-direction:column; align-items:center; gap:10px; width:92px;
