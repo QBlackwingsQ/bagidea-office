@@ -4,6 +4,24 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.20] — Run-lifecycle safety + TTS hardening
+
+**Fixed** (thanks @misternay 🙏)
+- **No more hung runs or proxy zombie/retry loops.** Claude runs now have a wall-clock and
+  idle **timeout** (a watchdog reaps a stuck run), the daemon **shuts down gracefully** on
+  SIGTERM/SIGINT, and a **cross-platform process-tree kill** (`taskkill /T /F` on Windows,
+  SIGKILL elsewhere) reaps the *whole* tree — so a stuck run or a restart no longer leaves
+  an orphaned `claude`/proxy process alive ([#16](https://github.com/bagidea/bagidea-office/pull/16),
+  fixes [#15](https://github.com/bagidea/bagidea-office/issues/15)). Tunable via
+  `OFFICE_RUN_TOTAL_MS` / `OFFICE_RUN_IDLE_MS`.
+- **TTS is more robust** — failures surface as a chat chip instead of silence, a double-play
+  race is closed, and speak text is JSON-escaped so quotes/newlines don't break the call
+  ([#14](https://github.com/bagidea/bagidea-office/pull/14)).
+
+**Under the hood**
+- A 120s timeout on proxy (swappable-brain) upstream calls, chained to the client-drop abort.
+- npm **Trusted Publishing** workflow groundwork (OIDC) toward auto-publishing the `bagidea-office` npm bootstrapper.
+
 ## [0.9.19] — Prebuilt binaries (no more Build Tools!), faster installs, fixes
 
 **Added — the big one: prebuilt shell binaries**
