@@ -13,6 +13,16 @@
       "en": { "desc": "An in-office music player — play / pause / skip / loop a playlist for a nicer working vibe. Agents can start a track too." }
     },
     {
+      "id": "hello",
+      "name": "👋 Hello Office",
+      "author": "bagidea",
+      "repo": "https://github.com/bagidea/bagidea-office-template",
+      "tags": ["example", "official"],
+      "official": true,
+      "th": { "desc": "ปลั๊กอินตัวอย่าง + เทมเพลตทางการ — อ่านข้อมูลออฟฟิศสด, โพสต์ลง feed, สั่ง greet/roster, โชว์ครบทุก pattern ของการเขียน plugin · fork ไปสร้างของคุณเองได้เลย" },
+      "en": { "desc": "The official starter plugin & template — reads live office data, posts to the feed, greet / roster commands, and shows every plugin pattern. Fork it to build your own." }
+    },
+    {
       "id": "web-view",
       "name": "👁 Web View",
       "author": "bagidea",

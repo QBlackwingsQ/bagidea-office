@@ -11,7 +11,7 @@ step, zero dependencies. Drop one in `plugins/` and reload.
 > from the official template: `github.com/bagidea/bagidea-office-template`)
 
 This guide is written so a **person** OR an **agent** can build a working plugin
-from scratch. The `music` and `calculator` plugins (§7) are full examples to read.
+from scratch. The `music` plugin and the `hello` template (§7) are full examples to read.
 
 > 📦 **The office installs empty — no plugins ship with it** at all (see `.gitignore`:
 > `plugins/*`). The office owner installs them one at a time from the **Plugins Hub**
@@ -58,14 +58,14 @@ A plugin needs **only** `plugin.json`. Add `index.js` for server power, and/or
 
 ```json
 {
-  "id": "calculator",
-  "name": "🧮 Calculator",
+  "id": "hello",
+  "name": "👋 Hello Office",
   "version": "1.0.0",
   "description": "What it does, in one line.",
   "panel": "panel.html",
-  "window": { "w": 420, "h": 560, "resizable": true },
+  "window": { "w": 460, "h": 620, "resizable": true },
   "commands": [
-    { "name": "calc", "args": "<expression>", "desc": "Evaluate a math expression" }
+    { "name": "greet", "args": "[name]", "desc": "Post a friendly hello to the office feed" }
   ],
   "needsKeys": [],
   "enabled": true
@@ -190,8 +190,8 @@ Every plugin's `commands` are injected into agent prompts automatically (see
 `plugins.js → agentNote()`), so an agent can drive your plugin with a Bash call:
 
 ```bash
-curl -s -X POST http://127.0.0.1:8787/plugin/calculator/cmd \
-  -H "content-type: application/json" -d '{"cmd":"calc","args":"2*(3+4)^2"}'
+curl -s -X POST http://127.0.0.1:8787/plugin/hello/cmd \
+  -H "content-type: application/json" -d '{"cmd":"greet","args":"team"}'
 ```
 
 Because the panel and agents both go through `/cmd`, an agent saying *"loop the
@@ -222,15 +222,14 @@ Point the agent at this guide and it has everything it needs.
 
 ## 7. Two worked examples
 
-These are reference folders to **read while building** (they cover every pattern
-here). Only the Music Player is published to the Hub; the calculator is an example.
+Real, complete plugins to **read while building** — both installable from the 🧩 Hub:
 
-- **🎵 `plugins/music`** — the official Music Player (install it from the 🧩 Hub):
-  playlist with upload/multi-select-remove, play/pause/next/prev/loop/volume, a seek
-  bar, audio streamed with HTTP Range, agent commands, live WS sync.
-- **🧮 `plugins/calculator`** — a safe shunting-yard math engine (no `eval`):
-  basic arithmetic + trig/logs/powers/roots/factorial/constants, shared by the
-  panel UI and the `calc` agent command.
+- **🎵 Music Player** ([repo](https://github.com/bagidea/bagidea-office-music-player-plugin))
+  — playlist with upload/multi-select-remove, play/pause/next/prev/loop/volume, a seek bar,
+  audio streamed with HTTP Range, agent commands, live WS sync.
+- **👋 Hello Office** — the official **template**
+  ([repo](https://github.com/bagidea/bagidea-office-template)): reads live office data, posts
+  to the feed, `greet`/`roster` commands, and shows every plugin pattern. Fork it to start your own.
 
 ---
 
