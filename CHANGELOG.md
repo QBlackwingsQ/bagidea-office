@@ -4,6 +4,19 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.22] — Quieter, smarter voice (TTS)
+
+**Fixed**
+- **Transient Gemini TTS hiccups no longer spam the feed.** v0.9.20 began surfacing TTS
+  failures, but the preview voice model 500s/overloads now and then — so a passing
+  "🗣✗ An internal error has occurred…" chip would pop for a line that simply didn't get
+  spoken (the agent's work was never affected). The office now **retries** a transient TTS
+  error up to twice and otherwise **skips it quietly**.
+- **Voice is simply off when no Gemini key is connected** — silent, with no error chips at
+  all. The 🗣✗ chip now appears only for **actionable** problems (missing/revoked key,
+  unknown voice, auth/quota). How to turn voice on is shown on the ⚙ Agent-voices toggle,
+  the AI-features panel, and the ▶ voice-preview button.
+
 ## [0.9.21] — Token economy: cheaper agents by default
 
 **Changed — the office spends far fewer tokens, same smarts**
