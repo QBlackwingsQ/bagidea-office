@@ -33,6 +33,7 @@ const providers = require("./providers");
 const proxy = require("./proxy");
 const { RunWatchdog } = require("./watchdog");
 const { wireWorkspaceSettings } = require("./wire-hooks-runtime");
+const { killTree } = require("./kill-tree");   // cross-platform child reap (issue #15 review)
 
 // Issue #15 (Bug 1) — main runs need both a hard wall-clock cap and an idle
 // detector, or a stuck CLI retry loop pins a task in "started" until the CLI
@@ -1564,7 +1565,7 @@ function runClaude(agent, prompt, opts = {}) {
     totalMs: RUN_TOTAL_MS, idleMs: RUN_IDLE_MS,
     onKill: (reason) => {
       console.error(`[claude] watchdog: ${agent}/${task} killed — ${reason}`);
-      try { child.kill("SIGKILL"); } catch {}
+      killTree(child);   // issue #15 review: shell:true on win32 → must taskkill /T, not plain kill
       // Already-cleared (doneFired) runs are skipped by fireDone's guard.
       broadcast({ type: "task.failed", agent, task, session: entry.key,
         reason: `watchdog: ${reason}` });
@@ -1685,6 +1686,10 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
             watchdog.touch();   // issue #15: a tool call is forward progress
           } else if (b.type === "text" && b.text.trim()) {
             lastText = b.text;
+            // Review nit #2: count streaming text deltas as light progress too,
+            // so a long pure-reasoning turn (>RUN_IDLE_MS with no tool_use) isn't
+            // wrongly reaped. Tools are the strong signal; text is the fallback.
+            watchdog.touch();
             let raw = b.text;
             // `SPEAK:` lines become actual spoken audio (TTS) — strip from
             // the chat and let the overlay voice them.
@@ -2229,11 +2234,7 @@ function runSub(parentId, subId, taskText, entry, onDone) {
   // Ghosts are short-lived by contract — a stuck one is reaped, its slot
   // reported as failed, so the parent's synthesis always happens.
   const watchdog = setTimeout(() => {
-    try {
-      if (process.platform === "win32")
-        spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { shell: true });
-      else child.kill("SIGKILL");
-    } catch {}
+    killTree(child);
     finish(false);
   }, 6 * 60000);
   child.stdout.on("data", (c) => {
@@ -3728,11 +3729,7 @@ const server = http.createServer((req, res) => {
         const { task, agent } = JSON.parse(body);
         const kill = (rec, t) => {
           if (rec) {
-            try {
-              if (process.platform === "win32")
-                spawn("taskkill", ["/PID", String(rec.child.pid), "/T", "/F"], { windowsHide: true });
-              else rec.child.kill("SIGKILL");
-            } catch {}
+            killTree(rec.child);
           }
           runChildren.delete(t);
           // Always clear the strip — covers stale/replayed entries whose child is already gone.
@@ -3754,11 +3751,7 @@ const server = http.createServer((req, res) => {
         const set = projChildren[id];
         if (set) {
           for (const c of set) {
-            try {
-              if (process.platform === "win32")
-                spawn("taskkill", ["/PID", String(c.pid), "/T", "/F"], { windowsHide: true });
-              else c.kill("SIGKILL");
-            } catch {}
+            killTree(c);
           }
         }
         // Clear the lock immediately; the children's close handlers also settle it.
@@ -5452,7 +5445,8 @@ function gracefulShutdown(sig) {
   _shuttingDown = true;
   let n = 0;
   for (const { child } of runChildren.values()) {
-    try { child.kill("SIGKILL"); n++; } catch {}
+    killTree(child);
+    n++;
   }
   console.error(`[daemon] ${sig} — killed ${n} child process(es)`);
   process.exit(0);
