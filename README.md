@@ -18,6 +18,10 @@
 
 **Install in one line** — `npx bagidea` (or [from source](#install)). Windows · macOS/Linux (beta).
 
+<p align="center">
+  <img src="https://bagidea.github.io/bagidea-office/img/hero.gif" width="760" alt="BagIdea Office — a living HD-2D AI-agent office running as your desktop wallpaper, agents at their desks behind your icons">
+</p>
+
 Not a dashboard. Not a chat window. A **world** that renders the true state of
 your Claude agents — Claude Code sessions, headless runs, custom scripts — as
 living pixel-art employees behind your desktop icons, and gives them a **society**.
