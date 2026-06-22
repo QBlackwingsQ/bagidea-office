@@ -1,0 +1,118 @@
+name: Release binaries
+
+# Build the Rust shell once per platform and attach it to the GitHub Release for
+# the tag, so end-user installers can DOWNLOAD the binary instead of compiling it
+# (no Visual Studio C++ Build Tools / rustup / multi-minute cargo build on install).
+#
+# Triggered by our release flow pushing a `vX.Y.Z` tag. The release itself is
+# created (with notes) by `gh release create` in that flow; this workflow only
+# ATTACHES the built assets to it. workflow_dispatch is for manual test builds.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach binaries to (e.g. v0.9.18)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ---- Windows x64 --------------------------------------------------------------
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build shell (release)
+        working-directory: shell
+        run: cargo build --release
+      - name: Stage asset
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp shell/target/release/bagidea-office-shell.exe dist/bagidea-office-shell-windows-x64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  # ---- macOS universal (arm64 + x64) -------------------------------------------
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Build shell (both arches)
+        working-directory: shell
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+      - name: Build wallpaper shim (both arches)
+        working-directory: shell/macos/wallpaper_shim
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+      - name: Lipo universal + ad-hoc sign
+        run: |
+          mkdir -p dist
+          lipo -create -output dist/bagidea-office-shell-macos-universal \
+            shell/target/aarch64-apple-darwin/release/bagidea-office-shell \
+            shell/target/x86_64-apple-darwin/release/bagidea-office-shell
+          lipo -create -output dist/libwallpaper_shim-macos-universal.dylib \
+            shell/macos/wallpaper_shim/target/aarch64-apple-darwin/release/libwallpaper_shim.dylib \
+            shell/macos/wallpaper_shim/target/x86_64-apple-darwin/release/libwallpaper_shim.dylib
+          chmod +x dist/bagidea-office-shell-macos-universal
+          codesign --force --sign - dist/bagidea-office-shell-macos-universal
+          codesign --force --sign - dist/libwallpaper_shim-macos-universal.dylib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  # ---- Linux x64 (built on Ubuntu 24.04 → WebKitGTK 4.1) -----------------------
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libsoup-3.0-dev
+      - name: Build shell (release)
+        working-directory: shell
+        run: cargo build --release
+      - name: Stage asset
+        run: |
+          mkdir -p dist
+          cp shell/target/release/bagidea-office-shell dist/bagidea-office-shell-linux-x64
+          chmod +x dist/bagidea-office-shell-linux-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  # ---- Collect everything, checksum, attach to the Release ---------------------
+  release:
+    needs: [windows, macos, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Flatten + checksums
+        run: |
+          mkdir -p dist
+          find artifacts -type f -exec cp {} dist/ \;
+          ( cd dist && sha256sum * > checksums.txt )
+          echo "Assets:" && ls -la dist
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist/*
+          fail_on_unmatched_files: true

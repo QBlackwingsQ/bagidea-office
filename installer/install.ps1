@@ -49,6 +49,12 @@ function Get-File($url, $out, $label) {
 }
 function Have($c) { return [bool](Get-Command $c -ErrorAction SilentlyContinue) }
 
+# "https://github.com/OWNER/REPO(.git)" -> "OWNER/REPO" (for release-asset URLs).
+function Repo-Slug($url) {
+  if ($url -match "github\.com[:/]+([^/]+)/([^/.]+)") { return "$($matches[1])/$($matches[2])" }
+  return $null
+}
+
 # Pull freshly-installed tools onto THIS session's PATH (winget updates the
 # registry, not the running shell) so git/node/cargo are usable right away.
 function Sync-Path {
@@ -91,9 +97,37 @@ Step 2 "Node.js LTS"
 if (Have "node") { Skip "already installed ($(node --version))" }
 else { WingetInstall "OpenJS.NodeJS.LTS"; if (Have "node") { Ok "installed" } else { Warn "installed - reopen a terminal if 'node' isn't found" } }
 
+# ---- try to fetch a PREBUILT shell binary -----------------------------------
+# If a matching release binary exists we DOWNLOAD it and skip installing Rust +
+# the ~2-4 GB C++ Build Tools and the multi-minute cargo build. Falls back to a
+# source build on any miss (offline, old version, a fork without releases). Force
+# a source build with -SkipBuildTools or $env:BAGIDEA_NO_PREBUILT=1.
+$Prebuilt = $false; $prebuiltTmp = $null; $prebuiltVer = $null
+$slug = Repo-Slug $Repo
+if (-not ($SkipBuildTools -or $env:BAGIDEA_NO_PREBUILT) -and $slug) {
+  Write-Host ""; Write-Host "  [*] Looking for a prebuilt desktop shell (skips the Rust build)..." -ForegroundColor Cyan
+  try {
+    $prebuiltVer = ([string](Invoke-RestMethod -Uri "https://raw.githubusercontent.com/$slug/$Branch/VERSION" -ErrorAction Stop)).Trim()
+    if ($prebuiltVer) {
+      $asset = "bagidea-office-shell-windows-x64.exe"
+      $url = "https://github.com/$slug/releases/download/v$prebuiltVer/$asset"
+      $prebuiltTmp = Join-Path $env:TEMP $asset
+      if (Test-Path $prebuiltTmp) { Remove-Item $prebuiltTmp -Force }
+      Get-File $url $prebuiltTmp "prebuilt shell v$prebuiltVer"
+      if ((Test-Path $prebuiltTmp) -and ((Get-Item $prebuiltTmp).Length -gt 200000)) {
+        $Prebuilt = $true; Ok "got the prebuilt shell v$prebuiltVer - skipping Rust + C++ Build Tools + the cargo build"
+      } else {
+        if ($prebuiltTmp -and (Test-Path $prebuiltTmp)) { Remove-Item $prebuiltTmp -Force }
+        $prebuiltTmp = $null; Skip "no usable prebuilt - will build from source"
+      }
+    }
+  } catch { $Prebuilt = $false; $prebuiltTmp = $null; Skip "no prebuilt for this version - will build from source" }
+} else { Skip "prebuilt disabled - building the shell from source" }
+
 Step 3 "Rust toolchain (compiles the desktop shell)"
 $cargo = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
-if (Have "cargo") { $cargo = "cargo"; Skip "already installed ($(cargo --version))" }
+if ($Prebuilt) { Skip "using a prebuilt shell - Rust toolchain not needed" }
+elseif (Have "cargo") { $cargo = "cargo"; Skip "already installed ($(cargo --version))" }
 elseif (Test-Path $cargo) { Skip "already installed" }
 else {
   WingetInstall "Rustlang.Rustup"
@@ -113,7 +147,8 @@ function Have-MSVC {
   }
   return [bool](Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC" -Directory -ErrorAction SilentlyContinue)
 }
-if (Have-MSVC) { Skip "C++ build tools already present" }
+if ($Prebuilt) { Skip "using a prebuilt shell - the ~2-4 GB C++ Build Tools are not needed" }
+elseif (Have-MSVC) { Skip "C++ build tools already present" }
 elseif ($SkipBuildTools) { Warn "skipped (-SkipBuildTools) - the build will fail without a C++ linker" }
 else {
   Warn "Not found. Installing the C++ workload now."
@@ -124,6 +159,31 @@ else {
     --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
   if (Have-MSVC) { Ok "C++ build tools installed" }
   else { Warn "could not confirm the build tools - if the build fails, install 'Desktop development with C++' from the Visual Studio Installer" }
+}
+
+# ---- Edge WebView2 runtime: wry renders the shell UI with it -----------------
+# Pre-installed on most Win10/11, but NOT guaranteed (N/LTSC/minimal). A prebuilt
+# (or source-built) shell shows a blank window without it, so ensure it once.
+Step "4b" "Microsoft Edge WebView2 runtime (the shell renders its UI with it)"
+function Have-WebView2 {
+  foreach ($k in @(
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
+    "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}")) {
+    $v = (Get-ItemProperty -Path $k -Name pv -ErrorAction SilentlyContinue).pv
+    if ($v -and $v -ne "0.0.0.0") { return $true }
+  }
+  return $false
+}
+if (Have-WebView2) { Skip "WebView2 already present" }
+else {
+  Warn "Installing the Evergreen WebView2 runtime (small download)."
+  $wv = Join-Path $env:TEMP "MicrosoftEdgeWebview2Setup.exe"
+  try {
+    Get-File "https://go.microsoft.com/fwlink/p/?LinkId=2124703" $wv "WebView2 runtime"
+    Start-Process -FilePath $wv -ArgumentList "/silent","/install" -Wait
+    if (Have-WebView2) { Ok "WebView2 installed" } else { Warn "couldn't confirm WebView2 - if the office window is blank, install the Evergreen WebView2 runtime" }
+  } catch { Warn "WebView2 download failed - if the office window is blank, install the Evergreen WebView2 runtime" }
 }
 
 Step 5 "Godot $GODOTV (renders the office world)"
@@ -239,6 +299,19 @@ if (Test-Path (Join-Path $APP ".git")) {
   git -C $APP config core.longpaths true 2>$null
 }
 
+# ---- drop the prebuilt shell into place (if we fetched one above) ------------
+if ($Prebuilt -and $prebuiltTmp -and (Test-Path $prebuiltTmp)) {
+  $relDir = Join-Path $APP "shell\target\release"
+  New-Item -ItemType Directory -Force $relDir | Out-Null
+  try {
+    Copy-Item $prebuiltTmp (Join-Path $relDir "bagidea-office-shell.exe") -Force -ErrorAction Stop
+    Remove-Item $prebuiltTmp -Force -ErrorAction SilentlyContinue
+  } catch {
+    Warn "couldn't place the prebuilt shell ($($_.Exception.Message)) - will build from source"
+    $Prebuilt = $false
+  }
+}
+
 # ---- optional art pack (licensed packs are NOT in the public repo) -----------
 Step "7b" "Art assets (characters / 3D models / sounds)"
 $assetDir = Join-Path $APP "godot\assets"
@@ -270,18 +343,23 @@ if ($Assets) {
 # ---- build the Rust shell ----------------------------------------------------
 Step 8 "Build the desktop shell (first build can take a few minutes)"
 $exe = Join-Path $APP "shell\target\release\bagidea-office-shell.exe"
-if (Have "cargo") { $cargo = "cargo" }
-Push-Location (Join-Path $APP "shell")
-Write-Host "      compiling - you'll see 'Compiling <crate>' lines scroll; the first build is 3-8 min (NOT frozen)..." -ForegroundColor DarkGray
-& $cargo build --release
-Pop-Location
-if (Test-Path $exe) { Ok "built -> $exe" }
-else {
-  Warn "BUILD FAILED. Most often this means the C++ linker is missing."
-  Warn "Fix it, then re-run this script:"
-  Warn "  winget install Microsoft.VisualStudio.2022.BuildTools --override `"--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended`""
-  Warn "  (or open the Visual Studio Installer and add 'Desktop development with C++')"
-  Warn "Then reopen a terminal and run this installer again."
+if ($Prebuilt -and (Test-Path $exe)) {
+  Ok "using the prebuilt shell - no build needed -> $exe"
+} else {
+  if ($Prebuilt) { Warn "the prebuilt shell didn't land - falling back to a source build" }
+  if (Have "cargo") { $cargo = "cargo" }
+  Push-Location (Join-Path $APP "shell")
+  Write-Host "      compiling - you'll see 'Compiling <crate>' lines scroll; the first build is 3-8 min (NOT frozen)..." -ForegroundColor DarkGray
+  & $cargo build --release
+  Pop-Location
+  if (Test-Path $exe) { Ok "built -> $exe" }
+  else {
+    Warn "BUILD FAILED. Most often this means the C++ linker is missing."
+    Warn "Fix it, then re-run this script:"
+    Warn "  winget install Microsoft.VisualStudio.2022.BuildTools --override `"--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended`""
+    Warn "  (or open the Visual Studio Installer and add 'Desktop development with C++')"
+    Warn "Then reopen a terminal and run this installer again."
+  }
 }
 
 # ---- branded window/taskbar icon (BAG IDEA, never a Godot icon) --------------

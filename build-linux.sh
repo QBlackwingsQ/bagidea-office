@@ -43,8 +43,30 @@ if [ "$need_node" -eq 1 ]; then
   sudo apt-get install -y nodejs
 fi
 
+# ---- try a prebuilt shell (skips installing Rust + the cargo build) ----------
+# Only trust it when WebKitGTK 4.1 is present (the prebuilt is built on Ubuntu
+# 24.04 / webkit 4.1); older distros that only have 4.0 fall back to a source
+# build. Force a source build with BAGIDEA_NO_PREBUILT=1.
+PREBUILT=0
+if [ -z "$BAGIDEA_NO_PREBUILT" ] && pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
+  SLUG=$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -nE 's#.*github\.com[:/]+([^/]+)/([^/.]+).*#\1/\2#p')
+  VER=$(head -n1 "$ROOT/VERSION" 2>/dev/null | tr -d ' \r\n')
+  if [ -n "$SLUG" ] && [ -n "$VER" ]; then
+    mkdir -p "$ROOT/shell/target/release"
+    echo "    + looking for a prebuilt shell v$VER (linux x86_64)…"
+    if curl -fSL --retry 3 -o "$ROOT/shell/target/release/bagidea-office-shell" "https://github.com/$SLUG/releases/download/v$VER/bagidea-office-shell-linux-x64"; then
+      chmod +x "$ROOT/shell/target/release/bagidea-office-shell"
+      PREBUILT=1
+      echo "    → got the prebuilt shell (skipping Rust + the cargo build)"
+    else
+      echo "    - no prebuilt available; will build from source"
+      rm -f "$ROOT/shell/target/release/bagidea-office-shell"
+    fi
+  fi
+fi
+
 # Rust (official rustup — the apt 'rustc' can be too old for some crates).
-if ! command -v cargo &> /dev/null; then
+if [ "$PREBUILT" != "1" ] && ! command -v cargo &> /dev/null; then
   echo "    + installing Rust (rustup)..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
 fi
@@ -70,8 +92,12 @@ else
 fi
 
 # ---- 3. Build the shell ------------------------------------------------------
-echo "[3/6] building the native shell (first build takes several minutes — NOT frozen)..."
-( cd "$ROOT/shell" && cargo build --release )
+if [ "$PREBUILT" = "1" ]; then
+  echo "[3/6] using the prebuilt native shell (build skipped)"
+else
+  echo "[3/6] building the native shell (first build takes several minutes — NOT frozen)..."
+  ( cd "$ROOT/shell" && cargo build --release )
+fi
 
 # ---- 4. Claude Code hooks (Node — same as macOS) -----------------------------
 echo "[4/6] wiring Claude Code hooks..."

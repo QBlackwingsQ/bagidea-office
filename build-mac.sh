@@ -24,7 +24,34 @@ if ! command -v node &> /dev/null; then
     brew install node
 fi
 
-if ! command -v cargo &> /dev/null; then
+# ---- try a prebuilt UNIVERSAL shell (skips installing Rust + the cargo build) ----
+# Falls back to a source build on any miss (offline, fork without releases, asset
+# not uploaded yet). Force a source build with BAGIDEA_NO_PREBUILT=1.
+PREBUILT=0
+if [ -z "$BAGIDEA_NO_PREBUILT" ]; then
+  SLUG=$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -nE 's#.*github\.com[:/]+([^/]+)/([^/.]+).*#\1/\2#p')
+  VER=$(head -n1 "$ROOT/VERSION" 2>/dev/null | tr -d ' \r\n')
+  if [ -n "$SLUG" ] && [ -n "$VER" ]; then
+    BASE="https://github.com/$SLUG/releases/download/v$VER"
+    mkdir -p "$ROOT/shell/target/release" "$ROOT/shell/macos"
+    echo "    + looking for a prebuilt shell v$VER (universal)…"
+    if curl -fSL --retry 3 -o "$ROOT/shell/target/release/bagidea-office-shell" "$BASE/bagidea-office-shell-macos-universal" \
+       && curl -fSL --retry 3 -o "$ROOT/shell/macos/libwallpaper_shim.dylib" "$BASE/libwallpaper_shim-macos-universal.dylib"; then
+      chmod +x "$ROOT/shell/target/release/bagidea-office-shell"
+      codesign --force --sign - "$ROOT/shell/macos/libwallpaper_shim.dylib" 2>/dev/null || true
+      codesign --force --sign - "$ROOT/shell/target/release/bagidea-office-shell" 2>/dev/null || true
+      # Clear the download quarantine so Gatekeeper allows the unsigned binary.
+      xattr -dr com.apple.quarantine "$ROOT/shell/target/release/bagidea-office-shell" "$ROOT/shell/macos/libwallpaper_shim.dylib" 2>/dev/null || true
+      PREBUILT=1
+      echo "    → got the prebuilt shell (skipping Rust + the cargo build)"
+    else
+      echo "    - no prebuilt available; will build from source"
+      rm -f "$ROOT/shell/target/release/bagidea-office-shell" "$ROOT/shell/macos/libwallpaper_shim.dylib"
+    fi
+  fi
+fi
+
+if [ "$PREBUILT" != "1" ] && ! command -v cargo &> /dev/null; then
     echo "    + installing Rust..."
     # The 'rustup' homebrew formula is deprecated/removed in many taps.
     # We use the official rustup installer instead.
@@ -53,16 +80,21 @@ else
 fi
 
 # ---- 3. Build Components -----------------------------------------------------
-echo "[3/6] building wallpaper shim (DYLD injected into Godot)…"
-echo "    + compiling Rust - 'Compiling ...' lines will scroll. The first build takes several minutes, it is NOT frozen..."
-( cd "$ROOT/shell/macos/wallpaper_shim" && cargo build --release )
-cp "$ROOT/shell/macos/wallpaper_shim/target/release/libwallpaper_shim.dylib" \
-   "$ROOT/shell/macos/libwallpaper_shim.dylib"
-codesign --force --sign - "$ROOT/shell/macos/libwallpaper_shim.dylib"
+if [ "$PREBUILT" = "1" ]; then
+  echo "[3/6] using the prebuilt wallpaper shim (build skipped)"
+  echo "[4/6] using the prebuilt native shell (build skipped)"
+else
+  echo "[3/6] building wallpaper shim (DYLD injected into Godot)…"
+  echo "    + compiling Rust - 'Compiling ...' lines will scroll. The first build takes several minutes, it is NOT frozen..."
+  ( cd "$ROOT/shell/macos/wallpaper_shim" && cargo build --release )
+  cp "$ROOT/shell/macos/wallpaper_shim/target/release/libwallpaper_shim.dylib" \
+     "$ROOT/shell/macos/libwallpaper_shim.dylib"
+  codesign --force --sign - "$ROOT/shell/macos/libwallpaper_shim.dylib"
 
-echo "[4/6] building the native shell…"
-echo "    + compiling the shell - more 'Compiling ...' lines; another few minutes, still working (NOT frozen)..."
-( cd "$ROOT/shell" && cargo build --release )
+  echo "[4/6] building the native shell…"
+  echo "    + compiling the shell - more 'Compiling ...' lines; another few minutes, still working (NOT frozen)..."
+  ( cd "$ROOT/shell" && cargo build --release )
+fi
 
 # ---- 4. Wiring --------------------------------------------------------------
 echo "[5/6] wiring Claude Code hooks for this machine…"

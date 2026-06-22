@@ -55,19 +55,39 @@ else
   fi
 fi
 
-# 3) Rebuild the shell only when its source changed (and cargo exists).
-echo "  [3/4] Checking shell rebuild..."
-if command -v cargo &>/dev/null; then
-  SHELL_CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null | grep -c "^shell/" || true)
-  if [ "$SHELL_CHANGED" -gt 0 ]; then
-    echo "  + Shell source changed — rebuilding..."
-    (cd "$ROOT/shell" && cargo build --release)
-    echo "  ✓ Shell rebuilt"
-  else
-    echo "  - Shell unchanged, skipping rebuild"
+# 3) Update the shell when its source changed: prebuilt first (no toolchain), then cargo.
+echo "  [3/4] Checking shell update..."
+SHELL_CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null | grep -c "^shell/" || true)
+if [ "$SHELL_CHANGED" -gt 0 ]; then
+  PLACED=0
+  if [ -z "$BAGIDEA_NO_PREBUILT" ]; then
+    SLUG=$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -nE 's#.*github\.com[:/]+([^/]+)/([^/.]+).*#\1/\2#p')
+    VER=$(head -n1 "$ROOT/VERSION" 2>/dev/null | tr -d ' \r\n')
+    if [ -n "$SLUG" ] && [ -n "$VER" ]; then
+      BASE="https://github.com/$SLUG/releases/download/v$VER"
+      mkdir -p "$ROOT/shell/target/release" "$ROOT/shell/macos"
+      if curl -fSL --retry 3 -o "$ROOT/shell/target/release/bagidea-office-shell" "$BASE/bagidea-office-shell-macos-universal" \
+         && curl -fSL --retry 3 -o "$ROOT/shell/macos/libwallpaper_shim.dylib" "$BASE/libwallpaper_shim-macos-universal.dylib"; then
+        chmod +x "$ROOT/shell/target/release/bagidea-office-shell"
+        codesign --force --sign - "$ROOT/shell/macos/libwallpaper_shim.dylib" 2>/dev/null || true
+        codesign --force --sign - "$ROOT/shell/target/release/bagidea-office-shell" 2>/dev/null || true
+        xattr -dr com.apple.quarantine "$ROOT/shell/target/release/bagidea-office-shell" "$ROOT/shell/macos/libwallpaper_shim.dylib" 2>/dev/null || true
+        PLACED=1
+        echo "  ✓ Downloaded prebuilt shell v$VER (no build needed)"
+      fi
+    fi
+  fi
+  if [ "$PLACED" != "1" ]; then
+    if command -v cargo &>/dev/null; then
+      echo "  + Building the shell from source (shell/ changed)..."
+      (cd "$ROOT/shell" && cargo build --release)
+      echo "  ✓ Shell rebuilt"
+    else
+      echo "  ⚠ shell/ changed but no prebuilt + no cargo — keeping the current binary"
+    fi
   fi
 else
-  echo "  - cargo not found, skipping shell rebuild"
+  echo "  - Shell unchanged, skipping"
 fi
 
 # 4) Restart the daemon.

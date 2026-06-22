@@ -54,22 +54,49 @@ if ($before -eq $after) { Write-Host "  - Already up to date" -ForegroundColor D
 # Re-point the Claude hooks at this install (the pull restored the dev paths).
 & (Join-Path $PSScriptRoot "wire-hooks.ps1") -App $root
 
-# 3) Rebuild the shell only when its source changed (and cargo exists).
+# 3) Update the shell binary ONLY when its source changed. Try the prebuilt for
+#    the new version first (no Rust toolchain needed — also fixes the old "no cargo
+#    → shell update silently skipped" case), and fall back to a source build.
 $shellChanged = git diff --name-only $before $after -- shell/ | Measure-Object -Line
 if ($shellChanged.Lines -gt 0) {
-  $cargo = Get-Command cargo -ErrorAction SilentlyContinue
-  if (-not $cargo) {
-    $cb = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
-    if (Test-Path $cb) { $cargo = $cb }
+  $exe = Join-Path $root "shell\target\release\bagidea-office-shell.exe"
+  $placed = $false
+  if (-not $env:BAGIDEA_NO_PREBUILT) {
+    try {
+      $origin = (git -C $root remote get-url origin 2>$null)
+      $slug = if ($origin -match "github\.com[:/]+([^/]+)/([^/.]+)") { "$($matches[1])/$($matches[2])" } else { $null }
+      $ver = ((Get-Content (Join-Path $root "VERSION") -ErrorAction Stop | Select-Object -First 1)).Trim()
+      if ($slug -and $ver) {
+        $url = "https://github.com/$slug/releases/download/v$ver/bagidea-office-shell-windows-x64.exe"
+        $tmp = Join-Path $env:TEMP "bagidea-office-shell-windows-x64.exe"
+        if (Test-Path $tmp) { Remove-Item $tmp -Force }
+        try { Import-Module BitsTransfer -ErrorAction Stop; Start-BitsTransfer -Source $url -Destination $tmp -ErrorAction Stop }
+        catch { Invoke-WebRequest -Uri $url -OutFile $tmp }
+        if ((Test-Path $tmp) -and ((Get-Item $tmp).Length -gt 200000)) {
+          New-Item -ItemType Directory -Force (Split-Path $exe) | Out-Null
+          Copy-Item $tmp $exe -Force
+          Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+          $placed = $true
+          Write-Host "  [3/4] Downloaded the prebuilt shell v$ver (no build needed)" -ForegroundColor DarkCyan
+        }
+      }
+    } catch { $placed = $false }
   }
-  if ($cargo) {
-    Write-Host "  [3/4] Rebuilding the shell (shell/ changed)..." -ForegroundColor DarkCyan
-    Push-Location (Join-Path $root "shell")
-    & $(if ($cargo -is [string]) { $cargo } else { $cargo.Source }) build --release
-    Pop-Location
-  } else {
-    Write-Host "  [3/4] ! shell/ changed but no Rust toolchain - keeping the current exe" -ForegroundColor Yellow
-    Write-Host "        Install:  winget install Rustlang.Rustup  then run 'bagidea update' again" -ForegroundColor Yellow
+  if (-not $placed) {
+    $cargo = Get-Command cargo -ErrorAction SilentlyContinue
+    if (-not $cargo) {
+      $cb = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
+      if (Test-Path $cb) { $cargo = $cb }
+    }
+    if ($cargo) {
+      Write-Host "  [3/4] Rebuilding the shell from source (shell/ changed)..." -ForegroundColor DarkCyan
+      Push-Location (Join-Path $root "shell")
+      & $(if ($cargo -is [string]) { $cargo } else { $cargo.Source }) build --release
+      Pop-Location
+    } else {
+      Write-Host "  [3/4] ! shell/ changed but no prebuilt + no Rust toolchain - keeping the current exe" -ForegroundColor Yellow
+      Write-Host "        A prebuilt usually appears within minutes of a release; or install Rust: winget install Rustlang.Rustup" -ForegroundColor Yellow
+    }
   }
 } else {
   Write-Host "  [3/4] shell unchanged - skipping the build" -ForegroundColor DarkGray
