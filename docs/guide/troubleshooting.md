@@ -39,9 +39,17 @@ the installer** (re-running is safe; no data is lost).
 - A network/firewall issue while downloading the file from GitHub releases — check your
   connection and re-run (the installer skips steps that are already done and downloads only what's missing).
 
-**SmartScreen / Defender blocks the script or exe**
-- The script is open-source and readable in the repo — click **More info → Run anyway**,
-  or download `install.ps1`, read it first, then run it yourself.
+**SmartScreen / Defender blocks the script or app (Windows)**
+- Everything is open source and readable in the repo. The installer scripts and the
+  prebuilt shell are **unsigned for now**, so Windows may warn. Click **More info → Run
+  anyway**, or download `install.ps1`, read it first, then run it yourself. (Code signing
+  is on the roadmap — it'll remove the prompt.)
+
+**macOS: "can't be opened because Apple cannot check it for malicious software"**
+- The prebuilt binary is unsigned for now. The installer already clears the download
+  quarantine, but if Gatekeeper still blocks it: **right-click the app → Open** (then
+  **Open** again in the dialog), or run
+  `xattr -dr com.apple.quarantine ~/BagIdeaOffice/shell/target/release/bagidea-office-shell`.
 
 **Build succeeds but typing `bagidea` isn't found**
 - The command was just added to PATH — **open a new terminal** and try again
