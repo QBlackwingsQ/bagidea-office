@@ -3973,7 +3973,16 @@ const server = http.createServer((req, res) => {
         } else {
           const c = reg.providerConfig[provider] || {};
           if (token !== undefined) { c.token = String(token).slice(0, 400); c.connected = false; }
-          if (baseUrl !== undefined) c.baseUrl = String(baseUrl).slice(0, 300);
+          if (baseUrl !== undefined) {
+            let b = String(baseUrl).slice(0, 300).trim();
+            // Claude CLI appends /v1/messages itself — a user-supplied …/v1 doubles it → 405.
+            // Strip for anthropic-kind; leave openai-kind alone (proxy handles its own pathing).
+            const effectiveKind = kind || c.kind || "anthropic";
+            if (effectiveKind !== "openai") {
+              b = b.replace(/\/+$/, "").replace(/\/v1$/, "");
+            }
+            c.baseUrl = b;
+          }
           if (model !== undefined) c.model = String(model).slice(0, 60);
           if (kind !== undefined) c.kind = kind === "openai" ? "openai" : "anthropic";
           if (label !== undefined) c.label = String(label).slice(0, 40);
@@ -4035,21 +4044,23 @@ const server = http.createServer((req, res) => {
             authorization: "Bearer " + pc.token, "anthropic-version": "2023-06-01" },
           body: JSON.stringify({ model, max_tokens: 1, messages: [{ role: "user", content: "hi" }] }),
         });
-        const authBad = r.status === 401 || r.status === 403;  // other codes = key authenticated
+        const authBad = r.status === 401 || r.status === 403;  // bad key
+        const pathBad = r.status === 404 || r.status === 405;   // doubled /v1 or wrong endpoint
         // Best-effort: pull the provider's LIVE model list from its OpenAI-compatible
         // /models endpoint so the picker is always current (GLM/DeepSeek/Qwen/Moonshot…).
         // A failure here never blocks the connection — static hints + the free-type field
         // still work.
         let models = null;
         const murl = pc.modelsUrl || (spec && spec.modelsUrl);
-        if (!authBad && murl) {
+        if (!authBad && !pathBad && murl) {
           try {
             const msig = AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined;
             const mr = await fetch(murl, { headers: { authorization: "Bearer " + pc.token }, signal: msig });
             if (mr.ok) { const j = await mr.json(); captureModelCtx(provider, j.data); models = proxy.cleanModels((j.data || []).map((m) => m.id)).sort().slice(0, 120); }
           } catch {}
         }
-        setConn(!authBad, models && models.length ? models : null);
+        setConn(!authBad && !pathBad, models && models.length ? models : null);
+        if (pathBad) return done(false, "endpoint ไม่ถูก (HTTP " + r.status + ") — ถ้า baseUrl ลงท้ายด้วย /v1 ให้ตัดออก");
         return done(!authBad, authBad ? "key ไม่ผ่าน (HTTP " + r.status + ")" : "เชื่อมต่อแล้ว ✓", models);
       } catch (e) { return done(false, String((e && e.message) || e)); }
     });
