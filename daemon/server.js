@@ -304,11 +304,16 @@ function slugId(name) {
 let _lastSkillLearn = 0;
 const SKILL_COOLDOWN_MS = 15 * 60 * 1000;
 async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId) {
-  // Throttled: the reflection is itself a full Claude run, so firing it after EVERY
-  // tool-using task roughly doubled the token bill. Only reflect on genuinely
-  // tool-heavy tasks (>=5 tools) and at most once per ~15 min — it still learns, sparingly.
-  if (reg.autoSkills === false || acts.length < 5) return;
-  if (Date.now() - _lastSkillLearn < SKILL_COOLDOWN_MS) return;
+  if (reg.autoSkills === false) return;
+  // Adaptive: reflection is a full Claude run, so on a MATURE office (already has a
+  // healthy auto-learned library) firing it after every task ~doubled the bill — throttle
+  // there (>=5 tools, once / 15 min). But while the office is YOUNG, learn EAGERLY
+  // (>=3 tools, no cooldown) so a new user actually SEES their agents grow skills — that's
+  // the whole point of the feature. ("auto" marks a self-learned skill; builtins don't count.)
+  const learned = Object.values(reg.skills).filter((s) => s.auto).length;
+  const young = learned < 8;
+  if (acts.length < (young ? 3 : 5)) return;
+  if (!young && Date.now() - _lastSkillLearn < SKILL_COOLDOWN_MS) return;
   _lastSkillLearn = Date.now();
   const existing = Object.values(reg.skills).map((s) => s.name).join(", ") || "(none)";
   // ONE reflection call distills both: a reusable skill AND durable memory
