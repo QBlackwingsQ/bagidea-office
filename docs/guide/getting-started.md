@@ -9,7 +9,7 @@
 **Quickest — any OS** (needs [Node](https://nodejs.org)):
 
 ```sh
-npx bagidea-office
+npx bagidea
 ```
 
 This runs the right platform installer for you and **downloads a prebuilt app**, so a

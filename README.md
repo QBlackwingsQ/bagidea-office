@@ -16,7 +16,7 @@
 [![YouTube](https://img.shields.io/badge/YouTube-bagidea-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/bagidea)
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-d97757)](https://claude.com/claude-code)
 
-**Install in one line** — `npx bagidea-office` (or [from source](#install)). Windows · macOS/Linux (beta).
+**Install in one line** — `npx bagidea` (or [from source](#install)). Windows · macOS/Linux (beta).
 
 Not a dashboard. Not a chat window. A **world** that renders the true state of
 your Claude agents — Claude Code sessions, headless runs, custom scripts — as
@@ -358,13 +358,14 @@ Three independent processes: the **daemon** keeps agents running even if renderi
 ### Quickest — via npm
 
 ```sh
-npx bagidea-office
+npx bagidea
 ```
 
-A tiny launcher ([`bagidea-office`](https://www.npmjs.com/package/bagidea-office) on
-npm) that runs the right platform installer for you — or install it globally with
-`npm i -g bagidea-office`. Either way you'll still need
-[Claude Code](https://claude.com/claude-code).
+A tiny launcher that runs the right platform installer for you — it downloads a prebuilt
+app, so a normal install needs no Build Tools or Rust. Published on npm as
+[`bagidea`](https://www.npmjs.com/package/bagidea) (and the longer
+[`bagidea-office`](https://www.npmjs.com/package/bagidea-office) — both work). Either way
+you'll still need [Claude Code](https://claude.com/claude-code).
 
 ### One-shot installer (recommended)
 
