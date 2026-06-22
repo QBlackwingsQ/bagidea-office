@@ -64,11 +64,11 @@ So the single biggest cost lever is: **what brain are your busy/worker agents on
 3. **Watch the meter.** `bagidea stats` shows the last 7 days — runs, cost, per-agent spend,
    and a per-brain estimate — so you can see which agent/brain is expensive and re-route it.
 
-> Since **v0.9.20+** the defaults are already tuned for economy: agents split into
-> sub-agents only when a task is *genuinely* parallel (not "always"), auto-learn is adaptive,
-> idle social is lighter and runs with no web tools, and long Claude threads are compacted
-> proactively. You don't have to do anything to get those — the knobs above are for going
-> further.
+> The defaults are tuned for economy out of the box: agents split into sub-agents only when
+> a task is *genuinely* parallel (not "always"), auto-learn is adaptive (eager while the
+> office is young, then it throttles itself), idle social is lighter and runs with no web
+> tools, and long Claude threads are compacted proactively. You don't have to do anything to
+> get those — the knobs above are for going further.
 
 ---
 
