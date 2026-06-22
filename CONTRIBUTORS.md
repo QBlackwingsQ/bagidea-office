@@ -21,7 +21,9 @@ early macOS support, when the project was Windows-only:
   CLI shell-binary finder on macOS/Linux with cross-platform tests
   ([#9](https://github.com/bagidea/bagidea-office/pull/9)), then rounded out **full
   macOS support** — installer/update robustness on a wired install, CLI uninstall,
-  and a custom-provider save fix ([#12](https://github.com/bagidea/bagidea-office/pull/12)).
+  and a custom-provider save fix ([#12](https://github.com/bagidea/bagidea-office/pull/12)),
+  and hardened TTS — surfaced failures, fixed a double-play race, escaped the speak
+  JSON ([#14](https://github.com/bagidea/bagidea-office/pull/14)).
 
 > Want to be on this list? Open a PR — see [docs/guide/plugin-hub.md](docs/guide/plugin-hub.md)
 > for plugins, or fix anything in the repo. Every merged contribution is credited here
