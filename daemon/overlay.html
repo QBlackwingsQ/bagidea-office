@@ -1458,12 +1458,14 @@
   }
   // Tool name → short, human "what am I doing" phrase. Reuses the Thai tool
   // descriptions shipped from constants.js (BUILTIN_DESC, e.g. Read → "อ่านไฟล์ /
-  // รูปภาพ / PDF") and tr()'s them into the active UI language. Falls back to the
-  // raw name for unknown / MCP tools so the user always sees *something*.
+  // รูปภาพ / PDF") and tr()'s BOTH the verb and the description into the active
+  // UI language — same pattern as the rest of the UI (Thai source → tr() →
+  // Gemini auto-translate for non-en/zh/ja). Falls back to the raw name for
+  // unknown / MCP tools so the user always sees *something*.
   function toolLabel(tool) {
     if (!tool) return tr("ทำงานอยู่…");
     const desc = BUILTIN_DESC[tool];
-    if (desc) return tr("กำลัง") + " " + desc.split(" / ")[0].toLowerCase();
+    if (desc) return tr("กำลัง") + " " + tr(desc.split(" / ")[0]).toLowerCase();
     if (tool.startsWith("mcp__")) return tr("กำลังใช้ปลั๊กอิน") + " " + tool.split("__").pop();
     return tr("กำลังใช้") + " " + tool;
   }
