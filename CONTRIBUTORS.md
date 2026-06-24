@@ -45,7 +45,11 @@ means opening a PR that adds your plugin to `web/plugins.json`. When we merge it
 
 Your plugin's own code lives in your own repo, where you're of course the author.
 
-_(No community plugins in the catalog yet — yours could be the first!)_
+- **[@misternay](https://github.com/misternay)** — **🧪 Agent Workbench**
+  ([repo](https://github.com/misternay/bagidea-office-agent-workbench-plugin),
+  [#26](https://github.com/bagidea/bagidea-office/pull/26)) — the **first community plugin**
+  in the Hub: test & benchmark agents — run prompts, capture responses, measure token usage,
+  and save runs as reusable regression test cases.
 
 ## Built with Claude Code
 
