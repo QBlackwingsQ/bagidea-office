@@ -25,8 +25,9 @@ early macOS support, when the project was Windows-only:
   timeouts, graceful shutdown, cross-platform process-tree kill
   ([#16](https://github.com/bagidea/bagidea-office/pull/16)), live chat status +
   inline permission approval ([#18](https://github.com/bagidea/bagidea-office/pull/18)),
-  and routing each agent's brain in meetings/reflection — the 401 fix
-  ([#22](https://github.com/bagidea/bagidea-office/pull/22)).
+  routing each agent's brain in meetings/reflection — the 401 fix
+  ([#22](https://github.com/bagidea/bagidea-office/pull/22)), and stopping phantom
+  agent seats after hire→delete ([#25](https://github.com/bagidea/bagidea-office/pull/25)).
 
 > Want to be on this list? Open a PR — see [docs/guide/plugin-hub.md](docs/guide/plugin-hub.md)
 > for plugins, or fix anything in the repo. Every merged contribution is credited here
