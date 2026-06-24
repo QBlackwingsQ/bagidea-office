@@ -4439,9 +4439,9 @@ const server = http.createServer((req, res) => {
       try {
         if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
         const id = String(JSON.parse(body).id || "").replace(/[^\w-]/g, "");
-        const dir = path.join(__dirname, "..", "plugins", id);
-        const manFile = path.join(dir, "plugin.json");
-        if (!fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
+        const dir = plugins.dirOf(id);   // by manifest id — folder name may differ
+        const manFile = dir && path.join(dir, "plugin.json");
+        if (!dir || !fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
         // Core plugins ship with the office and can't be uninstalled; only
         // plugins the user added (e.g. via GitHub) are removable.
         let man = {}; try { man = JSON.parse(fs.readFileSync(manFile, "utf8")); } catch {}
@@ -4463,8 +4463,8 @@ const server = http.createServer((req, res) => {
       const out = {};
       await Promise.all(plugins.list().map(async (p) => {
         if (p.core) return;
-        const dir = path.join(pluginsRoot, p.id);
-        if (!fs.existsSync(path.join(dir, ".git"))) return;
+        const dir = plugins.dirOf(p.id);   // by manifest id — folder name may differ
+        if (!dir || !fs.existsSync(path.join(dir, ".git"))) return;
         try {
           const opt = { cwd: dir, timeout: 12000 };
           // Only shallow clones are Hub-installed (depth 1, never developed in).
@@ -4491,9 +4491,9 @@ const server = http.createServer((req, res) => {
       const { execFile } = require("child_process");
       try {
         const id = String(JSON.parse(body).id || "").replace(/[^\w-]/g, "");
-        const dir = path.join(__dirname, "..", "plugins", id);
-        const manFile = path.join(dir, "plugin.json");
-        if (!fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
+        const dir = plugins.dirOf(id);   // by manifest id — folder name may differ
+        const manFile = dir && path.join(dir, "plugin.json");
+        if (!dir || !fs.existsSync(manFile)) throw new Error("ไม่พบ plugin");
         let man = {}; try { man = JSON.parse(fs.readFileSync(manFile, "utf8")); } catch {}
         if (man.core) throw new Error("plugin หลักอัปเดตผ่านตัวแอป ไม่ใช่ที่นี่");
         if (!fs.existsSync(path.join(dir, ".git"))) throw new Error("plugin นี้ไม่ได้ติดตั้งจาก git — อัปเดตอัตโนมัติไม่ได้");
