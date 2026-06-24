@@ -228,6 +228,8 @@
   "ph_official": "Officiel",
   "ph_open_note": "Si votre bureau n'apparaît pas, le lien a été copié — collez-le dans le panneau 🧩 Plugins du bureau.",
   "ph_loading": "Chargement des plugins…",
+  "ph_search": "Rechercher des plugins…",
+  "ph_nomatch": "Aucun plugin ne correspond à votre recherche.",
   "ph_empty": "Aucun plugin dans le catalogue pour le moment.",
   "ph_count": "plugins dans le catalogue",
   "ph_submit_eyebrow": "Contribuer",

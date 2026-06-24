@@ -228,6 +228,8 @@
   "ph_official": "Chính thức",
   "ph_open_note": "Nếu văn phòng của bạn không bật lên, liên kết đã được sao chép — dán nó vào bảng 🧩 Plugin của văn phòng.",
   "ph_loading": "Đang tải plugin…",
+  "ph_search": "Tìm plugin…",
+  "ph_nomatch": "Không có plugin nào khớp với tìm kiếm của bạn.",
   "ph_empty": "Chưa có plugin nào trong danh mục.",
   "ph_count": "plugin trong danh mục",
   "ph_submit_eyebrow": "Đóng góp",

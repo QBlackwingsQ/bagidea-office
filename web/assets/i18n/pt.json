@@ -228,6 +228,8 @@
   "ph_official": "Oficial",
   "ph_open_note": "Se o seu escritório não aparecer, o link foi copiado — cole-o no painel 🧩 Plugins do escritório.",
   "ph_loading": "Carregando plugins…",
+  "ph_search": "Buscar plugins…",
+  "ph_nomatch": "Nenhum plugin corresponde à sua busca.",
   "ph_empty": "Ainda não há plugins no catálogo.",
   "ph_count": "plugins no catálogo",
   "ph_submit_eyebrow": "Contribua",

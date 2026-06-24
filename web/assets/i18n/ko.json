@@ -228,6 +228,8 @@
   "ph_official": "공식",
   "ph_open_note": "사무실이 뜨지 않으면, 링크가 복사된 것입니다 — 사무실의 🧩 Plugins 패널에 붙여넣으세요.",
   "ph_loading": "플러그인을 불러오는 중…",
+  "ph_search": "플러그인 검색…",
+  "ph_nomatch": "검색과 일치하는 플러그인이 없습니다.",
   "ph_empty": "아직 카탈로그에 플러그인이 없습니다.",
   "ph_count": "개의 플러그인이 카탈로그에 있습니다",
   "ph_submit_eyebrow": "기여하기",

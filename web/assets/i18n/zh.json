@@ -228,6 +228,8 @@
   "ph_official": "官方",
   "ph_open_note": "如果你的办公室没有弹出，链接已被复制——把它粘贴到办公室的 🧩 Plugins 面板中即可。",
   "ph_loading": "正在加载插件…",
+  "ph_search": "搜索插件…",
+  "ph_nomatch": "没有与搜索匹配的插件。",
   "ph_empty": "目录中暂无插件。",
   "ph_count": "个插件在目录中",
   "ph_submit_eyebrow": "贡献",
