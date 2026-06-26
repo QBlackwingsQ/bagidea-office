@@ -1,8 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
+const { execFileSync } = require('node:child_process');
 
 const BASE_URL = 'http://127.0.0.1:8787';
+
+// Mirror of the server's canZenity() probe — used to assert that the
+// /platform endpoint's nativePick hint matches reality on the host.
+function hasZenity() {
+  if (process.platform !== 'linux') return true;
+  try {
+    execFileSync('sh', ['-c', 'command -v zenity'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function get(path) {
   return new Promise((resolve, reject) => {
@@ -80,7 +93,12 @@ test('Platform endpoint returns OS + separator', async (t) => {
     const expected = res.data.platform === 'win32' ? '\\' : '/';
     assert.strictEqual(res.data.sep, expected,
       `sep must match platform (${res.data.platform})`);
-    assert.strictEqual(res.data.nativePick, true);
+    // nativePick is platform-aware: always true on macOS/Windows; on Linux it
+    // reflects whether zenity is on PATH. Either way it must be a boolean.
+    assert.strictEqual(typeof res.data.nativePick, 'boolean',
+      `nativePick must be boolean, got ${JSON.stringify(res.data.nativePick)}`);
+    assert.strictEqual(res.data.nativePick, res.data.platform !== 'linux' || hasZenity(),
+      `nativePick must agree with platform (zenity present on linux)`);
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
       t.skip('Daemon not running at 127.0.0.1:8787');

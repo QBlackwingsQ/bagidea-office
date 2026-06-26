@@ -1048,6 +1048,25 @@ const WINPROJ = path.join(__dirname, "winproj.ps1");
 const MACPROJ = path.join(__dirname, "macproj.sh");
 const LIVEVIEW = path.join(__dirname, "liveview.ps1");
 
+// Cheap cached probe for `zenity` on PATH. Only meaningful on Linux; used by
+// the /platform endpoint's nativePick hint. Synchronous so the endpoint can
+// stay a plain JSON write — the result is memoized after the first call.
+let _zenityCache = null;
+function canZenity() {
+  if (process.platform !== "linux") return false;
+  if (_zenityCache !== null) return _zenityCache;
+  try {
+    // `command -v` is POSIX and always available in sh; throws when zenity
+    // is not on PATH — that's the "not installed" case.
+    require("child_process").execFileSync("sh", ["-c", "command -v zenity"],
+      { stdio: "ignore" });
+    _zenityCache = true;
+  } catch {
+    _zenityCache = false;
+  }
+  return _zenityCache;
+}
+
 function winproj(action, id, cb) {
   // Cross-platform project-window show/hide/stop/sweep.
   // Windows: PowerShell helper (winproj.ps1) walks the win32 window tree.
@@ -3864,6 +3883,9 @@ end tell`;
     //   Linux:   zenity --file-selection --directory (if installed)
     // Linux without zenity returns 404 so the client falls back to the
     // in-house picker. A cancelled dialog returns { path: null }.
+    // Human-UI only, same boundary as the other /fs + /task + /projects
+    // endpoints that surface a modal dialog to the user.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
     const { execFile } = require("child_process");
     const picked = (p) => {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
@@ -5341,11 +5363,18 @@ end tell`;
   } else if (req.url === "/platform") {
     // Single source of truth for the client: which OS is the daemon on,
     // and which path separator to use. Avoids deprecated navigator.platform.
+    // nativePick is a hint: macOS/Windows always have a native picker; Linux
+    // does only when zenity is on PATH. The client still treats a 404 from
+    // /fs/native-pick as the authoritative "fall back to in-house" signal,
+    // so this field is informational, not a guarantee.
+    const nativePick = process.platform === "win32" || process.platform === "darwin"
+      ? true
+      : canZenity();
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({
       platform: process.platform,
       sep: path.sep,
-      nativePick: true,  // all three platforms now support /fs/native-pick
+      nativePick,
     }));
 
   } else {

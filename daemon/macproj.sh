@@ -33,7 +33,9 @@ on run
       repeat with t in tabs of w
         set ct to custom title of t
         if ct starts with "BAGIDEA_PROJ_" then
-          -- Extract the project id after the 13-char prefix.
+          -- Extract the project id after the prefix. "BAGIDEA_PROJ_" is 13
+          -- chars, so the id begins at index 14. Keep these in sync if the
+          -- marker in server.js (macOS launch branch) ever changes.
           set projId to text 14 thru -1 of ct
 
           if theAction is "sweep" then
