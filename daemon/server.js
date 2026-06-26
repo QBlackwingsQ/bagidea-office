@@ -1935,10 +1935,16 @@ function autoRecoverOverflow(agent, prompt, opts, oldEntry) {
 let _teamListCache = null, _teamListKey = "";
 function teamList() {
   const ids = Object.keys(reg.agents).filter((id) => id !== "ceo" && id !== "main").sort();
-  const key = ids.map((id) => `${id}:${reg.agents[id].name}:${reg.agents[id].role}`).join("|");
+  const brainOf = (a) => a.model || a.provider || "claude";
+  // Include the brain in the cache key so a model change refreshes the list.
+  const key = ids.map((id) => { const a = reg.agents[id];
+    return `${id}:${a.name}:${a.role}:${brainOf(a)}`; }).join("|");
   if (_teamListKey === key && _teamListCache != null) return _teamListCache;
   _teamListKey = key;
-  _teamListCache = ids.map((id) => `- ${id}: ${reg.agents[id].name}, ${reg.agents[id].role}`)
+  // Show each teammate's fixed brain so the Director can route a task to the agent
+  // whose model fits — without changing anyone's model.
+  _teamListCache = ids.map((id) => { const a = reg.agents[id];
+    return `- ${id}: ${a.name}, ${a.role} · 🧠 ${brainOf(a)}`; })
     .join("\n") || "(no other staff yet)";
   return _teamListCache;
 }
@@ -1953,8 +1959,12 @@ function directorNote() {
   return `
 
 <system-capability>
-You are the Director. Your team:
+You are the Director. Your team (each with the brain 🧠 the owner gave them):
 ${teamList()}
+Each teammate runs on its OWN fixed brain (model) — and so do you. When a task suits a
+particular model, you do NOT switch models: you DELEGATE it to the teammate who already
+has that brain. You never change anyone's brain, or your own — that's the owner's 🧠
+editor, not your call. Your job is to analyze the task and route it, never to swap models.
 To hand work to a member, include a line EXACTLY in this format:
 DELEGATE: <agent_id> :: <clear, self-contained instruction>
 When the work belongs inside a registered project, ROUTE it explicitly:
@@ -3474,8 +3484,14 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ q, hits, stats: retrievalOk ? retrieval.stats() : null }));
 
   } else if (req.method === "POST" && req.url === "/registry/agent") {
-    // Create or update an agent. Protected rows (main/ceo) accept edits but
-    // never deletion; id is derived from the name on first save.
+    // Create or update an agent — including its BRAIN (provider/model), persona,
+    // skills and tools. Owner-only (the human editor): a teammate must never be able
+    // to reassign its own or anyone else's model. An agent told to "use the right
+    // model for the job" routes the work to whoever already has that brain — it does
+    // not edit brains here. Without the UI header this is a 403.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only — agents route work, they don't change brains"); }
+    // Protected rows (main/ceo) accept edits but never deletion; id is derived
+    // from the name on first save.
     readBody(req, (body) => {
       try {
         const p = JSON.parse(body);
@@ -3524,6 +3540,8 @@ const server = http.createServer((req, res) => {
     });
 
   } else if (req.method === "POST" && req.url === "/registry/agent/delete") {
+    // Owner-only — a teammate must not be able to remove other teammates.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
     readBody(req, (body) => {
       try {
         const { id } = JSON.parse(body);
@@ -4124,6 +4142,8 @@ end tell`;
     // 🧠 Swappable-brain credentials: per-provider token / baseUrl / model
     // overrides (glm/deepseek/qwen/minimax/litellm…). Values live only in
     // registry.json + the agent's spawn env — never sent to Anthropic.
+    // Owner-only (handles secrets + brain config) — same boundary as /registry/agent.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
     readBody(req, (body) => {
       try {
         const { provider, token, baseUrl, model, kind, label, remove } = JSON.parse(body);
