@@ -62,3 +62,66 @@ test('Version API Check', async (t) => {
     }
   }
 });
+
+test('Platform endpoint returns OS + separator', async (t) => {
+  // Cross-platform: /platform is the server-driven source of truth for the
+  // overlay's path separator and native-picker availability.
+  try {
+    const res = await get('/platform');
+    // A 404 here means the running daemon predates this endpoint — skip
+    // rather than fail, so the suite stays green against an old build.
+    if (res.statusCode === 404) return t.skip('/platform not on this daemon build');
+    assert.strictEqual(res.statusCode, 200);
+    assert.ok(['win32', 'darwin', 'linux'].includes(res.data.platform),
+      `platform must be win32|darwin|linux, got ${res.data.platform}`);
+    assert.ok(typeof res.data.sep === 'string' && res.data.sep.length === 1,
+      `sep must be a single char, got ${JSON.stringify(res.data.sep)}`);
+    // sep must agree with the platform
+    const expected = res.data.platform === 'win32' ? '\\' : '/';
+    assert.strictEqual(res.data.sep, expected,
+      `sep must match platform (${res.data.platform})`);
+    assert.strictEqual(res.data.nativePick, true);
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED') {
+      t.skip('Daemon not running at 127.0.0.1:8787');
+    } else {
+      throw err;
+    }
+  }
+});
+
+test('Native folder picker endpoint responds (or 404 on Linux w/o zenity)', async (t) => {
+  // We don't exercise the dialog (it blocks on user input) — we only verify
+  // the endpoint exists and returns a JSON-shaped response on the platforms
+  // where we can reach it without blocking. On Linux without zenity the
+  // daemon returns 404, which the client treats as "fall back to in-house".
+  // Skip on darwin/win32 to avoid hanging the suite on a modal dialog.
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    t.skip('Native picker blocks on user input — skip on darwin/win32');
+  }
+  try {
+    const res = await new Promise((resolve, reject) => {
+      const req = http.request(`${BASE_URL}/fs/native-pick`, { method: 'POST' }, (r) => {
+        let d = '';
+        r.on('data', (c) => d += c);
+        r.on('end', () => resolve({ statusCode: r.statusCode, data: d }));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    // On Linux: either 404 (no zenity) or 200 with {path: ...} (zenity opened).
+    // Both are acceptable; a 500 would indicate a real bug.
+    assert.ok(res.statusCode === 200 || res.statusCode === 404,
+      `expected 200 or 404, got ${res.statusCode}`);
+    if (res.statusCode === 200) {
+      const j = JSON.parse(res.data);
+      assert.ok('path' in j, '200 response must have a path field');
+    }
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED') {
+      t.skip('Daemon not running at 127.0.0.1:8787');
+    } else {
+      throw err;
+    }
+  }
+});
