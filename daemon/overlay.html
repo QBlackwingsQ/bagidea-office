@@ -4822,6 +4822,21 @@
         renderGroupMsg(m, faceId);
       }
     } catch {}
+    // Load historical action items for finished meetings (if any)
+    if (!live && bucket === "@group") {
+      try {
+        const actionsRes = await fetch(`/sessions/${encodeURIComponent(key)}/actions`);
+        if (actionsRes.ok) {
+          const { actions } = await actionsRes.json();
+          if (actions && actions.length) {
+            for (const a of actions) {
+              const ownerName = (reg.agents[a.owner] || { name: a.owner }).name;
+              addMsg("you", null, `✅ <b>${ownerName}</b>: ${a.text}`, a.created, "· action item");
+            }
+          }
+        }
+      } catch {}
+    }
     // Speak bar shows ONLY on the exact live meeting — never on a finished log
     // or a @sub log. liveMeetings is kept in sync by meeting.live/ended events.
     syncSpeakBar(key, live);
@@ -5021,16 +5036,34 @@
 
   // ---- discussion launcher ----------------------------------------------------
   document.getElementById("discussBtn").onclick = () => openDiscuss();
-  // Meeting templates — preset topic + discussion depth (must match the daemon's
-  // MEETING_TEMPLATES). They fill the launcher; they never change phase structure.
-  const MEETING_TEMPLATES = [
-    { id: "custom",        label: "✏️ Custom topic",  topic: "", rounds: 2 },
-    { id: "standup",       label: "📋 Standup",       topic: "Standup: what you did / will do / blockers", rounds: 1 },
-    { id: "retro",         label: "🔁 Retro",         topic: "Retro: what went well / badly / to improve", rounds: 2 },
-    { id: "brainstorm",    label: "💡 Brainstorm",    topic: "Brainstorm: generate ideas, no judgment yet", rounds: 3 },
-    { id: "design-review", label: "🎨 Design Review", topic: "Design review: questions, critique, suggestions", rounds: 2 },
-    { id: "planning",      label: "🗓 Planning",       topic: "Planning: goal, steps, owners, timeline",     rounds: 2 }
+  // Meeting templates — loaded from server to avoid duplication
+  let MEETING_TEMPLATES = [
+    { id: "custom", label: "✏️ Custom topic", topic: "", rounds: 2 }
   ];
+  // Load templates from server on startup
+  fetch("/meeting-templates")
+    .then(r => r.json())
+    .then(data => {
+      if (data.templates && data.templates.length) {
+        // Prepend custom option to server templates
+        MEETING_TEMPLATES = [
+          { id: "custom", label: "✏️ Custom topic", topic: "", rounds: 2 },
+          ...data.templates.map(t => ({
+            ...t,
+            label: getLabelIcon(t.id) + " " + t.label
+          }))
+        ];
+      }
+    })
+    .catch(err => console.error("Failed to load meeting templates:", err));
+
+  function getLabelIcon(id) {
+    const icons = {
+      standup: "📋", retro: "🔁", brainstorm: "💡",
+      "design-review": "🎨", planning: "🗓"
+    };
+    return icons[id] || "📝";
+  }
   function openDiscuss() {
     modal.classList.add("open");
     const picked = new Set();

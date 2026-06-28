@@ -3289,6 +3289,13 @@ async function runDiscussion(ids, topic, rounds, social, preKey) {
     try {
       ({ summary, actions } = social ? { summary: "", actions: [] }
         : await generateMeetingSummary(entry, ids));
+    } catch (e) {
+      console.error("[meeting] summary generation failed:", e && e.message);
+      summary = "(summary generation failed)";
+      actions = [];
+    }
+    // Always attempt to save and broadcast action items, even if summary failed
+    try {
       if (actions.length) {
         const stamped = actions.map((a, i) => ({
           id: `${entry.key}-${i + 1}`, meeting: entry.key, owner: a.owner,
@@ -3298,7 +3305,7 @@ async function runDiscussion(ids, topic, rounds, social, preKey) {
         for (const a of stamped)
           broadcast({ type: "meeting.action", action: a, session: entry.key });
       }
-    } catch (e) { console.error("[meeting] summary failed:", e && e.message); }
+    } catch (e) { console.error("[meeting] action items save failed:", e && e.message); }
     // Markdown minutes inside the agents' workspace — searchable by them.
     try {
       const dir = path.join(WORKSPACE, "meetings");
@@ -3559,6 +3566,24 @@ const server = http.createServer((req, res) => {
         res.end(String(e.message));
       }
     });
+
+  } else if (req.method === "GET" && req.url.startsWith("/sessions/") && req.url.includes("/actions")) {
+    // GET /sessions/:key/actions — retrieve action items for a historical meeting
+    const pathParts = req.url.split("/");
+    const key = pathParts[2];
+    try {
+      const actions = loadActions(key);
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ actions }));
+    } catch (e) {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ actions: [] }));
+    }
+
+  } else if (req.method === "GET" && req.url === "/meeting-templates") {
+    // GET /meeting-templates — serve meeting templates to eliminate client-side duplication
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ templates: MEETING_TEMPLATES }));
 
   } else if (req.method === "GET" && req.url.startsWith("/sessions")) {
     const agent = new URL(req.url, "http://x").searchParams.get("agent") || "main";
