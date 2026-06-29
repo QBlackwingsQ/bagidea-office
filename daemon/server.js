@@ -422,7 +422,7 @@ function isRateLimit(t) { const s = String(t || ""); return !!s && RATELIMIT_RE.
 // Claude's window is ~1M, so a long resumed thread can grow huge (and bill huge per
 // turn) before Claude self-compacts near the limit — cap it at 200k so the office
 // proactively compacts long threads and keeps per-turn cost down. (Set 0 to revert.)
-const CTX_BUDGET = { claude: 200000, glm: 115000, deepseek: 800000, qwen: 230000,
+const CTX_BUDGET = { claude: 200000, glm: 160000, deepseek: 800000, qwen: 230000,
   minimax: 180000, moonshot: 210000, kimicode: 210000, openai: 115000, gemini: 800000,
   openrouter: 100000, nvidia: 100000 };
 function provBudget(agent) {
@@ -457,7 +457,7 @@ function overBudget(agent, entry, cwd) {
 // Claude defaults to 1M because the current generation (Opus 4.8 / Sonnet 4.6) ships a
 // 1M-token window as standard; an agent on the BLANK default model lands here. The only
 // 200k Claude is Haiku 4.5, which is caught explicitly in MODEL_CTX when chosen.
-const CTX_WINDOW = { claude: 1000000, glm: 128000, deepseek: 1000000, qwen: 256000,
+const CTX_WINDOW = { claude: 1000000, glm: 200000, deepseek: 1000000, qwen: 256000,
   minimax: 200000, moonshot: 262144, kimicode: 262144, openai: 128000, gemini: 1000000,
   openrouter: 128000, nvidia: 128000 };
 
@@ -473,7 +473,10 @@ const MODEL_CTX = {
   "deepseek-v4-pro": 1000000, "deepseek-v4-flash": 1000000,
   // Gemini 2.5 — ~1,048,576 (no 2M on the 2.5 series; that was 1.5 Pro).
   "gemini-2.5-pro": 1048576, "gemini-2.5-flash": 1048576,
-  // GLM (Z.AI).
+  // GLM (Z.AI) — GLM-5.2 ships a real 1M window, but ONLY via the "glm-5.2[1m]" model
+  // id; plain "glm-5.2" serves the ~200k default. Map both so the meter + compaction
+  // budget are accurate either way, and the owner can opt into 1M by picking [1m].
+  "glm-5.2[1m]": 1000000, "glm-5.2": 200000,
   "glm-4.6": 200000, "glm-4.5": 128000,
   // Qwen3-Coder — plus/flash serve 1M via the API; the open "next" build is 256k.
   "qwen3-coder-plus": 1048576, "qwen3-coder-flash": 1048576, "qwen3-coder-next": 262144,
@@ -501,6 +504,7 @@ const MODEL_CTX_FAMILY = [
   ["gemini-2.5", 1048576], ["gemini-1.5-pro", 2097152], ["gemini-1.5", 1048576],
   ["deepseek-v4", 1000000], ["deepseek-v3", 131072], ["deepseek-r1", 131072],
   ["claude-opus-4", 1000000], ["claude-sonnet-4", 1000000], ["claude-haiku", 200000],
+  ["glm-5.2[1m]", 1000000], ["glm-5.2", 200000], ["glm-5", 200000],
   ["glm-4.6", 200000], ["glm-4.5", 128000], ["glm-4", 128000],
   ["qwen3-coder-plus", 1048576], ["qwen3-coder-flash", 1048576],
   ["qwen3-coder", 262144], ["qwen3-next", 262144], ["qwen3", 262144],
