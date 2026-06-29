@@ -3678,6 +3678,9 @@ const server = http.createServer((req, res) => {
     // we just append the CEO's line to entry.log (phase "user") and broadcast
     // it. The main loop's sliding window picks it up on the next agent's turn,
     // so replies arrive in turn order — no racing claude processes.
+    // Owner-only — this is the human speaking AS the CEO into the meeting, so an
+    // agent must not be able to forge a CEO line and steer the discussion.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
     readBody(req, (body) => {
       try {
         const { session, text } = JSON.parse(body);
@@ -3700,6 +3703,9 @@ const server = http.createServer((req, res) => {
   } else if (req.method === "POST" && req.url === "/discuss/control") {
     // Pause / resume / skip / end a live meeting. Mutates the shared ctrl object
     // the loop re-reads every turn — graceful (pause = don't start next turn).
+    // Owner-only — the human controls meetings, not an agent (which could otherwise
+    // silently end or stall a discussion). Same boundary as the other control routes.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
     readBody(req, (body) => {
       try {
         const { session, action } = JSON.parse(body);
