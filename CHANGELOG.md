@@ -4,6 +4,35 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.33] — Resilient brains, correct context windows, richer meetings
+
+**Fixed**
+- **A dead or misconfigured brain no longer hangs the office for ~2 minutes.** When a non-Claude
+  backend (GLM / DeepSeek / Kimi …) can't answer — bad/expired key (401/403) or an unreachable
+  endpoint — the office now detects it within seconds and tells you plainly which brain failed and
+  why, instead of waiting for ~10 silent retries that ended in a raw error.
+- **Correct context windows for every model** — so auto-compact fires at the right moment instead
+  of too often. GLM-5.2 in particular was falling back to a stale 128k value, so threads on it
+  compacted far too frequently and could drop context; it now reports its real 200k (or the full
+  1M with the `glm-5.2[1m]` model id). The GLM provider floor and compaction budget were raised to
+  match, and each model compacts at ~80% of its own window. *(Want GLM-5.2's full 1M? pick
+  `glm-5.2[1m]` in that agent's 🧠 brain field.)*
+
+**Added**
+- **Auto-failover to Claude.** When a non-Claude brain dies mid-task, the office automatically
+  re-runs that task once on Claude (the always-present default brain) and tells you it fell over —
+  so a flaky third-party brain never blocks you. Bounded (never loops), owner-visible on every
+  switch, and disable-able via the registry (`brainFailover: false`).
+- **Structured, interactive meetings with durable action items** — phases (open → deliberate →
+  decide), the owner can speak into a live meeting, live controls (pause / resume / end), and
+  action items that persist as validated, assignable records instead of dying with the transcript.
+  Thanks to **[@misternay](https://github.com/misternay)** (#32, closes #31).
+
+**Security**
+- The live-meeting owner routes (`/discuss/message`, `/discuss/control`) are now restricted to the
+  in-app editor, so an agent can't forge a CEO line into a meeting or silently end one — consistent
+  with the v0.9.32 hardening.
+
 ## [0.9.32] — Agents stay on the brain you gave them
 
 **Fixed**
