@@ -39,11 +39,22 @@ the installer** (re-running is safe; no data is lost).
 - A network/firewall issue while downloading the file from GitHub releases — check your
   connection and re-run (the installer skips steps that are already done and downloads only what's missing).
 
-**SmartScreen / Defender blocks the script or app (Windows)**
-- Everything is open source and readable in the repo. The installer scripts and the
-  prebuilt shell are **unsigned for now**, so Windows may warn. Click **More info → Run
-  anyway**, or download `install.ps1`, read it first, then run it yourself. (Code signing
-  is on the roadmap — it'll remove the prompt.)
+**Windows Security / Defender flags or quarantines the wallpaper or app**
+- This is a **false positive**. Everything is open source and readable in the repo, and the
+  binaries are **not yet code-signed**. Two things trip Windows heuristics: the branded
+  wallpaper engine (`BagIdeaOffice.exe`, a re-iconed Godot) and the way it paints behind your
+  desktop icons (a standard `SetParent`-onto-`WorkerW` wallpaper technique) — both look unusual,
+  so Defender sometimes quarantines the exe even though it's harmless.
+- **If Defender quarantined it** (the wallpaper won't start, or a "Threat found" toast appears):
+  open **Windows Security → Virus & threat protection → Protection history**, find the
+  BagIdea/Godot item, choose **Actions → Allow on device** (or **Restore**), then `bagidea start`.
+- **To stop it recurring**, add the install folder to Defender's exclusions (run in PowerShell):
+  ```powershell
+  Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\BagIdeaOffice"
+  ```
+- **SmartScreen "protected your PC"** on install: **More info → Run anyway**, or download
+  `install.ps1`, read it first, then run it yourself.
+- Code signing (an Authenticode certificate) is on the roadmap and will remove these prompts.
 
 **macOS: "can't be opened because Apple cannot check it for malicious software"**
 - The prebuilt binary is unsigned for now. The installer already clears the download

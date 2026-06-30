@@ -28,9 +28,10 @@ Get-CimInstance Win32_Process | Where-Object {
 } | ForEach-Object { taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null }
 Start-Sleep 1
 
-# 2) Start-with-Windows registry value.
-Write-Host "  [2/5] Removing start-with-Windows..." -ForegroundColor DarkCyan
+# 2) Start-with-Windows registry value + our Windows Settings > Apps entry.
+Write-Host "  [2/5] Removing start-with-Windows + Apps entry..." -ForegroundColor DarkCyan
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v BagIdeaOffice /f 2>$null | Out-Null
+reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\BagIdeaOffice" /f 2>$null | Out-Null
 
 # 3) PATH entry + env var.
 Write-Host "  [3/5] Removing the bagidea command from PATH..." -ForegroundColor DarkCyan

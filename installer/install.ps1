@@ -423,6 +423,28 @@ if (Test-Path $exe) {
   } else { Skip "auto-start already set" }
 } else { Skip "shell exe not built - skipped" }
 
+# ---- register in Windows Settings > Apps (so "uninstall" is discoverable) ----
+# Without this the app is invisible in Windows Settings, and the only way out is
+# the `bagidea uninstall` CLI command — which most people don't know about, so
+# they report "I can't uninstall". Register an Uninstall entry whose UninstallString
+# runs our uninstaller; Windows Settings then shows "BagIdea Office" with an
+# Uninstall button that does the right thing (PATH, Run key, shortcut, files).
+Step 13 "Registering in Windows Settings"
+if (Test-Path $exe) {
+  $Ver = if (Test-Path "$APP\VERSION") { (Get-Content "$APP\VERSION" -Raw).Trim() } else { "" }
+  $uk = "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\BagIdeaOffice"
+  $uninstallCmd = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + ($APP -replace '"','') + '\installer\uninstall.ps1"'
+  reg add $uk /v DisplayName       /t REG_SZ   /d "BagIdea Office" /f | Out-Null
+  reg add $uk /v DisplayVersion    /t REG_SZ   /d "$Ver" /f | Out-Null
+  reg add $uk /v Publisher         /t REG_SZ   /d "BagIdea Innovation Co., Ltd." /f | Out-Null
+  reg add $uk /v DisplayIcon       /t REG_SZ   /d "$exe" /f | Out-Null
+  reg add $uk /v InstallLocation   /t REG_SZ   /d "$APP" /f | Out-Null
+  reg add $uk /v UninstallString   /t REG_SZ   /d "$uninstallCmd" /f | Out-Null
+  reg add $uk /v NoModify          /t REG_DWORD /d 1 /f | Out-Null
+  reg add $uk /v NoRepair          /t REG_DWORD /d 1 /f | Out-Null
+  Ok "listed in Windows Settings > Apps (uninstall from there, or: bagidea uninstall)"
+} else { Skip "shell exe not built - skipped" }
+
 # ---- summary -----------------------------------------------------------------
 Write-Host ""
 if (Test-Path $exe) {
