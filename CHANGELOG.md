@@ -4,6 +4,32 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.35] — Discoverable uninstall, AV guidance, Linux chat-render fix
+
+**Fixed**
+- **You can now uninstall from Windows Settings.** BagIdea Office previously had no entry in
+  Windows Settings > Apps, so the only uninstall path was the `bagidea uninstall` CLI command —
+  which most people didn't know about and reported as "I can't uninstall". The installer now
+  registers an Uninstall entry, so "BagIdea Office" shows up with an Uninstall button that runs
+  the real uninstaller; the uninstaller cleans the entry up.
+- **Linux: the chat overlay should now render instead of a blank grey panel.** The overlay page
+  loaded fully but its body had no opaque background color (only a gradient), so on WebKitGTK it
+  painted transparent and showed the grey window behind. Given the body an explicit opaque fill
+  under the gradient. Plus a Godot-side i18n fetch race (`HTTPRequest is processing…`) is guarded.
+  Thanks to **[@nookpp](https://github.com/nookpp)** for the instrumented-shell diagnostic (#28).
+
+**Changed**
+- **Windows Security / Defender guidance.** The wallpaper engine and desktop-wallpaper technique
+  are unsigned, so Defender sometimes quarantines the exe (a false positive). The troubleshooting
+  guide now spells out how to Restore/Allow it and add a folder exclusion. Code signing is on the
+  roadmap.
+- **npm `bagidea-office` bootstrapper bumped to 0.9.34** (it always fetches the latest installer
+  from `main`, so this is cosmetic — but the version now reflects reality).
+
+---
+Installer / daemon / Godot changes — no shell rebuild. Update via the in-app 🔄 banner or
+`bagidea update`. (`cd npm && npm publish` to refresh the bootstrapper.)
+
 ## [0.9.34] — Linux chat restored + clean child-process shutdown
 
 **Fixed**
