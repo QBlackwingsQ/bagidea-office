@@ -2546,6 +2546,10 @@
     const chStatus = await fetch("/channels/status").then((x) => x.json()).catch(() => ({}));
     const klist = modalCard.querySelector("#klist");
     if (!klist) return;  // tab switched away while loading
+    // Preserve scroll across the re-render (connect / test / disconnect / save all call
+    // this again). The await + sub-container rebuild changes the page height transiently,
+    // which used to snap modalCard back to the top — same jump the OFFICE OPS tabs fixed.
+    const _wasScroll = modalCard.scrollTop;
     // Mask a secret so the user can recognise which key is set, without exposing it.
     const maskKey = (v) => { v = String(v || ""); if (!v) return ""; return v.length <= 10 ? "•".repeat(v.length) : v.slice(0, 8) + "••••••" + v.slice(-4); };
     // ── MAIN keys: dedicated, labeled, feature-aware.
@@ -2774,6 +2778,8 @@
         renderConnectTab();
       };
     }
+    // All sections filled — put the scrollbar back where the owner had it.
+    modalCard.scrollTop = _wasScroll;
   }
 
   // Channels — now their own settings tab (split out of the crowded CONNECT tab).
