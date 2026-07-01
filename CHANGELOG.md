@@ -4,6 +4,24 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.36] — Linux ARM64 chat via browser, Groq payload recovery, CONNECT scroll
+
+**Fixed**
+- **Linux ARM64: the chat finally works.** On setups where the embedded WebKitGTK overlay renders
+  blank (confirmed on DGX Spark / ARM64 / X11 — a driver/WM rendering issue, not an app bug),
+  "Open Office Chat" now opens the chat in a Chromium app window (or the system browser), re-uses
+  that one window on later Opens, restores it from minimized, and the blank overlay + invisible
+  click-target are gone. Windows / macOS / x86_64 Linux keep the embedded overlay. Thanks to
+  **[@nookpp](https://github.com/nookpp)** for the exhaustive bisect that proved the WebKitGTK
+  blank render and the precise focus/hotzone findings (#28, closed).
+- **A Groq "Request too large (max 32MB)" no longer dead-ends.** Groq caps a single request at
+  32MB; an image-heavy thread crossed it and surfaced as a raw error. That byte-size cap now
+  triggers the same summarize-and-restart-on-a-fresh-thread recovery as a context overflow (it
+  won't misfire on OpenAI's token-rate limit, which still pauses/resumes).
+- **OFFICE SETTINGS → CONNECT no longer jumps to the top** when you connect / test / disconnect /
+  save a key — the scroll position is preserved across the re-render (same fix class as the
+  OFFICE OPS tabs).
+
 ## [0.9.35] — Discoverable uninstall, AV guidance, Linux chat-render fix
 
 **Fixed**
