@@ -22,6 +22,25 @@ static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 // picks up the shutdown on its next tick — same cleanup path as tray Exit.
 static SIGNAL_SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
+// On Linux the embedded WebKitGTK overlay can render completely blank on some
+// setups (confirmed on DGX Spark / ARM64 / X11: the page loads, DOM + styles are
+// present, but nothing paints — even trivial standalone test pages stay blank).
+// It's a platform/driver rendering issue, not an app bug, and we can't fix it
+// from here. So on those setups we open the chat in the system browser instead
+// (the daemon serves the full UI at 127.0.0.1:8787) and keep the blank overlay
+// hidden. Default on for aarch64 Linux; BAGIDEA_BROWSER_CHAT=1|0 overrides.
+fn browser_chat() -> bool {
+    if cfg!(not(target_os = "linux")) {
+        return false;
+    }
+    match std::env::var("BAGIDEA_BROWSER_CHAT").ok().as_deref() {
+        Some("1") => return true,
+        Some("0") => return false,
+        _ => {}
+    }
+    cfg!(target_arch = "aarch64")
+}
+
 use tao::{
     dpi::{LogicalPosition, LogicalSize},
     event::{Event, WindowEvent},
@@ -1926,6 +1945,14 @@ fn main() {
         .build(&overlay)
         .expect("overlay webview");
     platform::region_round(&overlay, FULL.0, FULL.1, 18.0);
+    // Browser-chat mode (Linux/ARM64): the embedded overlay paints blank here, and a
+    // mapped-but-blank window just shows as the grey panel. Hide it for good — "Open
+    // chat" routes to the system browser instead — so neither the blank panel nor a
+    // useless overlay is ever shown. (Safe to hide because we never re-show it in this
+    // mode; the v0.9.31 re-show bug was about mapping it again, which we don't do.)
+    if browser_chat() {
+        overlay.set_visible(false);
+    }
 
     // ---- circular chat head
     let orb = chrome_window(
@@ -2043,6 +2070,16 @@ fn main() {
         }
 
         let do_toggle = |feed_now: bool| {
+            // Browser-chat mode (Linux/ARM64): the embedded overlay is blank here,
+            // so open the chat in the system browser instead of toggling it. The
+            // browser owns its own window; each "Open" (re)focuses the chat tab.
+            if browser_chat() {
+                let _ = std::process::Command::new("xdg-open")
+                    .arg("http://127.0.0.1:8787/")
+                    .spawn();
+                let _ = feed_now;
+                return;
+            }
             let hidden = overlay
                 .outer_position()
                 .map(|p| p.x < -2000)
