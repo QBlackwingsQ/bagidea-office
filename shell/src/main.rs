@@ -411,17 +411,18 @@ mod platform {
     use std::process::Command;
     use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
     use tao::window::{Window, WindowBuilder};
-    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows_sys::Win32::Graphics::Gdi::{
         CreateEllipticRgn, CreateRectRgn, CreateRoundRectRgn, SetWindowRgn,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumWindows, FindWindowExW, FindWindowW, GetWindowLongW, GetWindowThreadProcessId,
-        IsWindowVisible, SendMessageTimeoutW, SetLayeredWindowAttributes, SetParent,
-        SetWindowLongW, ShowWindow, SystemParametersInfoW, GWL_EXSTYLE, LWA_ALPHA,
-        SMTO_NORMAL, SPI_SETDESKWALLPAPER, SW_HIDE, SW_SHOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW,
+        GetParent, GetWindowRect, IsIconic, IsWindow, IsWindowVisible, SendMessageTimeoutW,
+        SetLayeredWindowAttributes, SetParent, SetWindowLongW, ShowWindow,
+        SystemParametersInfoW, GWL_EXSTYLE, LWA_ALPHA, SMTO_NORMAL, SPI_SETDESKWALLPAPER,
+        SW_HIDE, SW_SHOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
+    use std::io::Write;
 
     static PTT_THREAD_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     // Hold-to-talk via a low-level keyboard hook: the bound key, whether it's
@@ -848,6 +849,33 @@ mod platform {
                 position_wallpaper(godot, workerw, &root);
             }
             let _ = proxy.send_event(UserEvent::WorldReady);
+            // Optional diagnostic (BAGIDEA_WALLPAPER_DEBUG=1): sample the wallpaper
+            // window every 5s so the NEXT time it vanishes/shrinks we can read exactly
+            // what changed — hidden? minimized? wrong size? parent lost? — instead of
+            // guessing. Append to daemon/wallpaper-debug.log; zero-cost when off.
+            if std::env::var("BAGIDEA_WALLPAPER_DEBUG").is_ok() {
+                let logpath = root.join("daemon").join("wallpaper-debug.log");
+                let mut tick = 0u64;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    tick += 1;
+                    if IsWindow(godot) == 0 {
+                        let _ = std::fs::OpenOptions::new().create(true).append(true)
+                            .open(&logpath).and_then(|mut f| writeln!(f, "[t={tick}] GODOT PROCESS GONE"));
+                        break;
+                    }
+                    let vis = IsWindowVisible(godot);
+                    let iconic = IsIconic(godot);
+                    let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+                    let _ = GetWindowRect(godot, &mut rc);
+                    let parent = GetParent(godot);
+                    let on_workerw = if parent == workerw { 1 } else { 0 };
+                    let _ = std::fs::OpenOptions::new().create(true).append(true)
+                        .open(&logpath).and_then(|mut f| writeln!(
+                            f, "[t={tick}] vis={vis} iconic={iconic} on_workerw={on_workerw} parent={:p} size={}x{}",
+                            parent as *const (), rc.right - rc.left, rc.bottom - rc.top));
+                }
+            }
         });
     }
 
