@@ -4,6 +4,20 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.38] — Wallpaper diagnostic (capture why it sometimes vanishes/shrinks)
+
+**Diagnostics**
+- The wallpaper occasionally vanishes or shrinks to a small centered window on some Windows
+  setups, and the trigger has been hard to pin down. This release adds an opt-in sampler: with
+  the `BAGIDEA_WALLPAPER_DEBUG=1` environment variable set, the shell records the wallpaper
+  window's state (visible? minimized? still embedded in the desktop layer? its size? process
+  alive?) every 5 seconds to `daemon/wallpaper-debug.log`. The next time it breaks, the log
+  shows exactly what changed, so the fix targets the real cause. **Zero cost when the variable
+  is off** — nothing changes for normal use.
+
+---
+Shell change — prebuilt binaries rebuild for all platforms via CI.
+
 ## [0.9.37] — No more phantom agent seats on the wallpaper
 
 **Fixed**
