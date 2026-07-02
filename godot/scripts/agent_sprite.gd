@@ -23,6 +23,13 @@ const AuraFactory := preload("res://scripts/aura_factory.gd")
 const WALK_SPEED := 1.6        # m/s
 const IDLE_FPS := 5.0
 const WALK_FPS := 9.0
+# How much the sheet art is lifted (in texture px) so the feet land on the floor.
+# The sheet's feet sit below the cell center; the node floats at y≈0.86 so this
+# offset pulls the art down into the right spot. If characters look like they
+# FLOAT above the floor (gap under their feet), REDUCE this; if they SINK into
+# the floor, INCREASE it. Was 4.0 (dev calc); lowered because the art's feet sit
+# a touch high, leaving a visible gap.
+const FEET_LIFT_PX := 2.0
 # Sheet row order (verified against the art): down, LEFT, up, RIGHT.
 const DIR_DOWN := 0
 const DIR_LEFT := 1
@@ -356,7 +363,7 @@ func _process(delta: float) -> void:
 		offset.y = sin(_t) * 0.15
 	else:
 		# Ghosts hover — a visible float on top of the sheet's baked feet line.
-		offset.y = 4.0 + (sin(_t) * 2.6 if is_ghost else 0.0)
+		offset.y = FEET_LIFT_PX + (sin(_t) * 2.6 if is_ghost else 0.0)
 		offset.x = 0.0
 
 	match _mode:
@@ -373,7 +380,7 @@ func _process(delta: float) -> void:
 				else:
 					# Idle-only sheets (custom composites): fake the stride
 					# with a step-hop so walking still reads as walking.
-					offset.y = 4.0 + absf(sin(_t * 1.6)) * 2.2
+					offset.y = FEET_LIFT_PX + absf(sin(_t * 1.6)) * 2.2
 					offset.x = sin(_t * 0.8) * 1.4
 			frame = row * 4 + _anim_frame
 		"procedural":
