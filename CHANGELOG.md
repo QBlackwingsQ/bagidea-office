@@ -4,6 +4,19 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.37] — No more phantom agent seats on the wallpaper
+
+**Fixed**
+- **Renaming or deleting an agent no longer leaves a ghost of it on the wallpaper.** When an
+  agent left the roster (renamed or removed) but the removal event didn't reach the live
+  wallpaper, its character used to linger on the floor as a phantom seat (e.g. a leftover
+  "Agent" after a rename, still standing there with its nameplate). The wallpaper now drops any
+  seat that's missing from the synced roster on every sync, so the floor always matches the real
+  team. Reported by the owner.
+
+---
+Godot change — ships via `bagidea update` / the 🔄 banner (no shell rebuild).
+
 ## [0.9.36] — Linux ARM64 chat via browser, Groq payload recovery, CONNECT scroll
 
 **Fixed**
