@@ -4,6 +4,19 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.39] — Fail over to Claude when a brain is SUSTAINEDLY overloaded (529/503)
+
+**Fixed**
+- **A sustained provider overload (529 / 503) no longer ends in a raw "API Error: 529".** When a
+  non-Claude brain's server is overloaded (common with GLM/Z.AI under load), a one-off hiccup is
+  still left to the built-in retries, but once it's retried several times and the provider is still
+  down, the office now fails that task over to Claude the same way it does for a dead/bad-auth brain —
+  so the work runs instead of stalling on a raw error. The owner is told it fell over. (429 rate-limit
+  stays a pause/resume case, not a failover.)
+
+---
+Daemon change — no shell rebuild. Update via the in-app 🔄 banner or `bagidea update`.
+
 ## [0.9.38] — Wallpaper diagnostic (capture why it sometimes vanishes/shrinks)
 
 **Diagnostics**
