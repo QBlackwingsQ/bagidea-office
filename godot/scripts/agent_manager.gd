@@ -936,7 +936,28 @@ func _clear_status_later(a: Dictionary, delay: float) -> void:
 	if a.state == "idle":
 		a.node.set_status("")
 
+# The executive room (CEO console + the Director's lead_desk + the boss's pacing
+# spots) is RESERVED for the CEO and the Main Agent (Director). No other teammate
+# should gather, play or wander in there — owner's rule. This is the single list
+# that defines "the CEO room"; _walk enforces it centrally so no code path (a stray
+# wander target, a future activity, an agent that edits the world) can sneak a staff
+# body in there.
+const EXEC_ONLY_WP := ["exec_c", "ceo_desk", "lead_desk", "pace_a", "pace_b"]
+
+## True only for the two bodies allowed in the executive room.
+func _is_exec_resident(node: Sprite3D) -> bool:
+	if node == ceo:
+		return true
+	var m: Dictionary = agents.get("main", {})
+	return m.has("node") and is_instance_valid(m.get("node")) and m.node == node
+
 func _walk(node: Sprite3D, target: String, face_dir := -1) -> float:
+	# Guard the executive room: anyone who isn't the CEO or the Director aimed at an
+	# exec waypoint is quietly rerouted to the lobby instead of intruding. A no-op in
+	# normal play (no staff path targets exec today) — it's a regression-proof fence.
+	if target in EXEC_ONLY_WP and not _is_exec_resident(node):
+		target = "lobby_c"
+		face_dir = -1
 	# Any walk that ENDS at a work desk faces the monitor (north) on arrival, so
 	# seated agents always look at their screen — no matter which path sent them
 	# there (e.g. the Director returning from the CEO). The CEO console is its
