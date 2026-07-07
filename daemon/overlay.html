@@ -5388,6 +5388,18 @@
       if (shellPost && !document.body.classList.contains("feedmode")) shellPost("hide");
       return;
     }
+    if (ev.type === "window.open") {
+      // Remote window-open request (e.g. a game running in the browser wants the
+      // shell to pop a native plugin panel). The daemon relays this via WS; we
+      // forward it to the shell through the IPC. Falls back to a browser tab when
+      // shellPost is unavailable (game running standalone).
+      const src = ev.src || "";
+      const title = ev.title || "";
+      const key = ev.key || "";
+      const win = { w: Number(ev.w) || 900, h: Number(ev.h) || 680, resizable: ev.resizable !== false };
+      popWindow(src, title, key, win);
+      return;
+    }
     if (ev.type === "voice.say") {
       // 🗣 an agent chose to speak — fetch its voice and play (queued).
       // Never on journal replay: restarted clients must stay silent.
@@ -5763,8 +5775,17 @@
     wrap.appendChild(fb);
     return wrap;
   }
-  // Agent replies that mention media files get inline previews.
-  const MEDIA_RE = /((?:[A-Za-z]:[\\/]|\/uploads\/|\/(?:Users|home|Volumes)\/)[^\s"'`<>|?*]+?\.(?:png|jpe?g|gif|webp|bmp|mp4|webm|mp3|wav|m4a|ogg))/gi;
+  // Agent replies that mention media files get inline previews. The path body
+  // allows SPACES ([^\r\n…] not [^\s…]) — a Windows path like
+  //   E:\out\ChatGPT Image Jul 1, 2026, 08_10_04 PM.png
+  // or a Thai/space filename used to be skipped entirely, so nothing rendered
+  // for files outside workspace/ (uploads/ dodged this via its /uploads/ URL).
+  // The lazy `+?` + required extension keeps a match from swallowing trailing
+  // prose. Windows = any drive; Unix = the common absolute roots (kept as an
+  // allowlist so a bare `/` in a sentence doesn't false-match). Extensions match
+  // the server's MEDIA_MIME (incl. svg/mov/pdf). The daemon /media route serves
+  // ANY absolute path (localhost + media-MIME only), so no server change needed.
+  const MEDIA_RE = /((?:[A-Za-z]:[\\/]|\/(?:uploads|Users|home|Volumes|mnt|media|tmp|data|opt|srv|var|root|workspace|Applications|private)\/)[^\r\n"'`<>|?*]+?\.(?:png|jpe?g|gif|webp|bmp|svg|mp4|webm|mov|mp3|wav|m4a|ogg|pdf))/gi;
   function attachMediaPreviews(d, text) {
     const seen = new Set();
     for (const m of String(text).matchAll(MEDIA_RE)) {
