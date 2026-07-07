@@ -73,10 +73,18 @@ Write-Host "  ===========================================" -ForegroundColor Cyan
 Write-Host "   BagIdea Office - INSTALLER (open source)" -ForegroundColor Cyan
 Write-Host "  ===========================================" -ForegroundColor Cyan
 
-if (-not (Have "winget")) {
-  Warn "winget not found. Install 'App Installer' from the Microsoft Store, then re-run."
-  Warn "Store link: https://apps.microsoft.com/detail/9nblggh4nns1"
-  exit 1
+# winget is NICE-TO-HAVE, not required. Without it we still install everything
+# that matters: Git + Node come from direct portable downloads, and the desktop
+# shell comes prebuilt from the GitHub Release (no Rust build). Only the OPTIONAL
+# agent CLI tools (gh/ffmpeg/...) truly need winget, so we just skip those.
+# (This used to `exit 1` here, which killed the install on winget-less boxes —
+# e.g. Windows Server / fresh Administrator accounts — before it ever reached the
+# prebuilt path that needs no winget at all.)
+$HasWinget = Have "winget"
+if (-not $HasWinget) {
+  Warn "winget not found - continuing WITHOUT it: Git + Node download directly, and the shell comes prebuilt (no build)."
+  Warn "The optional agent tools (gh, ffmpeg, yt-dlp, ...) need winget - install 'App Installer' later to add them:"
+  Warn "  https://apps.microsoft.com/detail/9nblggh4nns1"
 }
 # NOTE: do NOT name this "Winget" - PowerShell command names are case-insensitive,
 # so a function "Winget" shadows winget.exe and `winget install` inside it would
@@ -88,14 +96,58 @@ function WingetInstall($id) {
   Sync-Path
 }
 
+# Persist a tools dir onto the User PATH (and this session) so a portable Git/Node
+# we side-load without winget is found now and on every later terminal.
+function Add-UserPath($dir) {
+  if (-not (Test-Path $dir)) { return }
+  $up = [Environment]::GetEnvironmentVariable("Path", "User")
+  if ($up -notlike "*$dir*") { [Environment]::SetEnvironmentVariable("Path", "$up;$dir", "User") }
+  if ($env:Path -notlike "*$dir*") { $env:Path = "$env:Path;$dir" }
+}
+
 # ---- dependencies ------------------------------------------------------------
 Step 1 "Git"
 if (Have "git") { Skip "already installed ($((git --version)))" }
-else { WingetInstall "Git.Git"; if (Have "git") { Ok "installed" } else { Warn "installed - reopen a terminal if 'git' isn't found" } }
+elseif ($HasWinget) { WingetInstall "Git.Git"; if (Have "git") { Ok "installed" } else { Warn "installed - reopen a terminal if 'git' isn't found" } }
+else {
+  # No winget: fetch portable MinGit (no admin, no installer) straight from the
+  # git-for-windows releases and put its cmd\ on PATH. Git is mandatory - the app
+  # is delivered by git clone/pull.
+  try {
+    $gitDir = Join-Path $APPDIR "tools\git"
+    New-Item -ItemType Directory -Force $gitDir | Out-Null
+    $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -Headers @{ "User-Agent" = "bagidea-office" } -ErrorAction Stop
+    $a = $rel.assets | Where-Object { $_.name -match "^MinGit-.*-64-bit\.zip$" -and $_.name -notmatch "busybox" } | Select-Object -First 1
+    if (-not $a) { throw "no MinGit asset in latest release" }
+    $z = Join-Path $env:TEMP $a.name
+    Get-File $a.browser_download_url $z "portable Git (MinGit)"
+    Expand-Archive -Path $z -DestinationPath $gitDir -Force; Remove-Item $z -ErrorAction SilentlyContinue
+    Add-UserPath (Join-Path $gitDir "cmd")
+    if (Have "git") { Ok "installed portable Git" } else { Warn "Git extracted but not on PATH yet - reopen a terminal" }
+  } catch { Warn "couldn't auto-install Git without winget - install Git for Windows from https://git-scm.com/download/win then re-run" }
+}
 
 Step 2 "Node.js LTS"
 if (Have "node") { Skip "already installed ($(node --version))" }
-else { WingetInstall "OpenJS.NodeJS.LTS"; if (Have "node") { Ok "installed" } else { Warn "installed - reopen a terminal if 'node' isn't found" } }
+elseif ($HasWinget) { WingetInstall "OpenJS.NodeJS.LTS"; if (Have "node") { Ok "installed" } else { Warn "installed - reopen a terminal if 'node' isn't found" } }
+else {
+  # No winget: fetch the Node LTS zip (no admin, no installer) from nodejs.org and
+  # put it on PATH. Node is mandatory - it runs the daemon.
+  try {
+    $nodeDir = Join-Path $APPDIR "tools\node"
+    New-Item -ItemType Directory -Force $nodeDir | Out-Null
+    $idx = Invoke-RestMethod -Uri "https://nodejs.org/dist/index.json" -ErrorAction Stop
+    $lts = $idx | Where-Object { $_.lts } | Select-Object -First 1
+    if (-not $lts) { throw "no LTS entry in nodejs dist index" }
+    $ver = $lts.version                     # e.g. v20.17.0
+    $name = "node-$ver-win-x64"
+    $z = Join-Path $env:TEMP "$name.zip"
+    Get-File "https://nodejs.org/dist/$ver/$name.zip" $z "Node.js LTS $ver (~30 MB)"
+    Expand-Archive -Path $z -DestinationPath $nodeDir -Force; Remove-Item $z -ErrorAction SilentlyContinue
+    Add-UserPath (Join-Path $nodeDir $name)  # node.exe + npm live directly in this subfolder
+    if (Have "node") { Ok "installed Node $ver" } else { Warn "Node extracted but not on PATH yet - reopen a terminal" }
+  } catch { Warn "couldn't auto-install Node without winget - install Node LTS from https://nodejs.org then re-run" }
+}
 
 # ---- try to fetch a PREBUILT shell binary -----------------------------------
 # If a matching release binary exists we DOWNLOAD it and skip installing Rust +
@@ -130,7 +182,17 @@ if ($Prebuilt) { Skip "using a prebuilt shell - Rust toolchain not needed" }
 elseif (Have "cargo") { $cargo = "cargo"; Skip "already installed ($(cargo --version))" }
 elseif (Test-Path $cargo) { Skip "already installed" }
 else {
-  WingetInstall "Rustlang.Rustup"
+  if ($HasWinget) { WingetInstall "Rustlang.Rustup" }
+  else {
+    # No winget + no prebuilt: pull rustup-init directly (win.rustup.rs) so a
+    # source build is still possible on a winget-less box.
+    try {
+      $ri = Join-Path $env:TEMP "rustup-init.exe"
+      Get-File "https://win.rustup.rs/x86_64" $ri "Rust installer (rustup)"
+      & $ri -y --default-toolchain stable-x86_64-pc-windows-msvc --profile minimal 2>$null | Out-Null
+      Sync-Path
+    } catch { Warn "couldn't auto-install Rust without winget - install from https://rustup.rs then re-run" }
+  }
   $rustup = Join-Path $env:USERPROFILE ".cargo\bin\rustup.exe"
   if (Test-Path $rustup) { & $rustup default stable-x86_64-pc-windows-msvc 2>$null | Out-Null; Ok "installed" }
   else { Warn "Rustup may need a new terminal - re-run this script if the build fails" }
@@ -150,6 +212,7 @@ function Have-MSVC {
 if ($Prebuilt) { Skip "using a prebuilt shell - the ~2-4 GB C++ Build Tools are not needed" }
 elseif (Have-MSVC) { Skip "C++ build tools already present" }
 elseif ($SkipBuildTools) { Warn "skipped (-SkipBuildTools) - the build will fail without a C++ linker" }
+elseif (-not $HasWinget) { Warn "no prebuilt shell + no winget - can't auto-install the C++ Build Tools; install 'Desktop development with C++' via the Visual Studio Installer, then re-run (or get a machine where the prebuilt release download works)" }
 else {
   Warn "Not found. Installing the C++ workload now."
   Warn "This is a LARGE one-time download (~2-4 GB) and can take 10-20 minutes."
@@ -213,6 +276,11 @@ else { Warn "npm not on PATH yet - reopen a terminal and run: npm install -g @an
 # whatever isn't present. These widen what the office can actually DO (media,
 # docs, data, GitHub) without writing any new code.
 Write-Host "`n  [+] Handy CLI tools for agents (gh, ffmpeg, yt-dlp, pandoc, jq, ImageMagick - optional)" -ForegroundColor Cyan
+if (-not $HasWinget) {
+  Skip "optional agent tools (gh, ffmpeg, yt-dlp, jq, pandoc, ImageMagick, LibreOffice) need winget - skipped"
+  Skip "install 'App Installer' from the Store later to add them: https://apps.microsoft.com/detail/9nblggh4nns1"
+}
+else {
 foreach ($t in @(
     @{ id = "GitHub.cli";               cmd = "gh" },
     @{ id = "Gyan.FFmpeg";              cmd = "ffmpeg" },
@@ -236,6 +304,7 @@ else {
   Write-Host "      - installing LibreOffice (Office-file support, ~350 MB, optional)..." -ForegroundColor DarkGray
   try { winget.exe install --id TheDocumentFoundation.LibreOffice -e --silent --accept-package-agreements --accept-source-agreements | Out-Null } catch {}
 }
+}  # end if $HasWinget
 if (Test-Path $loExe) {
   $up = [Environment]::GetEnvironmentVariable("Path", "User")
   if ($up -notlike "*LibreOffice\program*") {

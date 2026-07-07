@@ -72,7 +72,7 @@ if (platform === "win32") {
   process.exit(1);
 }
 
-console.log(`→ Running the ${platform} installer (this builds the Rust shell and fetches Godot — it can take a few minutes)…\n`);
+console.log(`→ Running the ${platform} installer (downloads a prebuilt app + Godot — no build on a normal install; can take a few minutes)…\n`);
 
 const r = spawnSync(cmd, args, { stdio: "inherit" });
 
