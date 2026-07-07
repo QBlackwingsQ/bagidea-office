@@ -6,15 +6,9 @@
 
 ## 1. Install
 
-**Quickest — any OS** (needs [Node](https://nodejs.org)):
-
-```sh
-npx bagidea
-```
-
-This runs the right platform installer for you and **downloads a prebuilt app**, so a
-normal install no longer needs the Visual Studio C++ Build Tools or Rust. Prefer to run
-the platform installer directly? Use one of these:
+**Recommended — the one-shot installer.** This is the most reliable path: one line,
+and it sets everything up. It **downloads a prebuilt app**, so a normal install needs
+**no Visual Studio C++ Build Tools and no Rust**. Run the line for your platform:
 
 **Windows** — open PowerShell and run a single line:
 
@@ -49,6 +43,15 @@ and creates a Start Menu shortcut.
 - **Safe to re-run** — it skips what's already installed; re-running = `git pull` (your data stays intact)
 - Anything installed via winget is pulled into the current terminal's PATH immediately, so it can keep going in one pass
 - **Source-build fallback** — if no prebuilt matches (offline, an older Linux distro, an unusual arch), it installs Rust + the C++ Build Tools (~2–4 GB, one time) and compiles from source, so the first run takes longer. Force it with `BAGIDEA_NO_PREBUILT=1`.
+- **No winget (Windows)?** It still works — Git and Node are downloaded directly, and the prebuilt shell needs no winget at all. Only the optional agent tools (gh, ffmpeg…) are skipped.
+
+**Prefer npm?** *(optional)* If you already have [Node](https://nodejs.org), `npx bagidea`
+is just a thin wrapper that runs this **same one-shot installer** for your platform — you
+don't need to run both:
+
+```sh
+npx bagidea
+```
 
 > Install didn't go through? See **[Install troubleshooting](troubleshooting.md)**
 > — it covers every symptom (winget missing, build fail, PATH not updating, SmartScreen blocking) with step-by-step fixes

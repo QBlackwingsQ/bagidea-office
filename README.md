@@ -16,7 +16,7 @@
 [![YouTube](https://img.shields.io/badge/YouTube-bagidea-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/bagidea)
 [![Built with Claude Code](https://img.shields.io/badge/built%20with-Claude%20Code-d97757)](https://claude.com/claude-code)
 
-**Install in one line** — `npx bagidea` (or [from source](#install)). Windows · macOS/Linux (beta).
+**Install in one line** — run the [one-shot installer](#installation) (Windows · macOS/Linux beta). Prefer npm? `npx bagidea` works too.
 
 <p align="center">
   <a href="https://bagidea.github.io/bagidea-office/" title="Watch the live demo"><img src="https://bagidea.github.io/bagidea-office/img/hero-still.png?v=4" width="820" alt="BagIdea Office — a living HD-2D AI-agent office running as your desktop wallpaper, agents at their desks behind your icons"></a>
@@ -361,27 +361,18 @@ Three independent processes: the **daemon** keeps agents running even if renderi
 
 ## Installation
 
-### Quickest — via npm
+### One-shot installer — the recommended way
 
-```sh
-npx bagidea
-```
-
-A tiny launcher that runs the right platform installer for you — it downloads a prebuilt
-app, so a normal install needs no Build Tools or Rust. Published on npm as
-[`bagidea`](https://www.npmjs.com/package/bagidea) (and the longer
-[`bagidea-office`](https://www.npmjs.com/package/bagidea-office) — both work). Either way
-you'll still need [Claude Code](https://claude.com/claude-code).
-
-### One-shot installer (recommended)
-
-On a **bare machine** it installs everything needed — Git, Node LTS, Rust, the
-**Visual Studio C++ Build Tools** (the Rust linker, and the most common reason a
-build fails), Godot 4.6.3 and the Claude Code CLI — then clones the app to
-`%LOCALAPPDATA%\BagIdeaOffice` (Windows) or `~/BagIdeaOffice` (macOS), builds the
-shell, brands the window icon, wires the `bagidea` command into your PATH and
-creates a Start Menu shortcut or Bin link. Freshly installed tools are pulled
-onto the current PATH so it finishes in one pass:
+This is the most reliable path: **one line**, and it sets everything up. On a
+**bare machine** it installs Git, Node LTS, Godot 4.6.3 and the Claude Code CLI and
+**downloads a prebuilt app** — so a normal install needs **no Visual Studio C++
+Build Tools and no Rust** (those are only fetched as a source-build fallback if no
+prebuilt matches). It then clones the app to `%LOCALAPPDATA%\BagIdeaOffice`
+(Windows) or `~/BagIdeaOffice` (macOS/Linux), brands the window icon, wires the
+`bagidea` command into your PATH and creates a Start Menu shortcut or Bin link.
+Freshly installed tools are pulled onto the current PATH so it finishes in one
+pass. Safe to re-run (it does a `git pull` and keeps your data). No winget? It
+still works — Git and Node are downloaded directly.
 
 **Windows:**
 ```powershell
@@ -407,6 +398,20 @@ curl -fsSL https://raw.githubusercontent.com/bagidea/bagidea-office/main/install
 > then `bagidea start`. Safe to re-run — a re-run does a `git pull` and your data is kept.
 > Install didn't finish? See **[troubleshooting → install](docs/guide/troubleshooting.md#แก้ปัญหาการติดตั้ง)**
 > (covers winget, the C++ Build Tools / linker error, PATH, SmartScreen).
+
+### Alternative — via npm (optional)
+
+Already have [Node](https://nodejs.org)? `npx bagidea` is just a thin wrapper that
+runs the **same one-shot installer** above for your platform — you don't need to
+run both, it's simply another way to kick off the same install. Published on npm as
+[`bagidea`](https://www.npmjs.com/package/bagidea) (and the longer
+[`bagidea-office`](https://www.npmjs.com/package/bagidea-office) — both work).
+
+```sh
+npx bagidea
+```
+
+Either way you'll still need [Claude Code](https://claude.com/claude-code).
 
 ### macOS installation
 

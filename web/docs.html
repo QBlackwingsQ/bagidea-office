@@ -116,11 +116,8 @@
 
     <h2 id="install-win" data-i18n="d_install_h">Installation</h2>
     <div class="note" data-i18n="d_install_plat">Platform support: Windows 11 (stable, wallpaper embedding uses the WorkerW technique), macOS 13+ (beta, DYLD shim), and Linux (experimental — X11 EWMH desktop attach; Wayland falls back to a fullscreen window pinned below).</div>
-    <h3 data-i18n="inst_npx_h">Quickest — one line, any OS</h3>
-    <p data-i18n="inst_npx_p">With Node installed, this sets up the office for your platform — it downloads a prebuilt app, so there's no Visual Studio Build Tools or Rust to compile.</p>
-    <pre><code>npx bagidea</code></pre>
     <h3 data-i18n="d_install_win_h">Windows — one-shot installer (recommended)</h3>
-    <p data-i18n="d_install_win_p">Open PowerShell and run the command below. It installs every dependency (Git, Node LTS, Rust, Godot 4.6.3, Claude Code CLI), clones the app to %LOCALAPPDATA%\BagIdeaOffice, builds the desktop shell, brands the window icon, adds bagidea to your PATH, and creates a Start Menu shortcut. It is safe to re-run — each step skips what's already done.</p>
+    <p data-i18n="d_install_win_p">Open PowerShell and run the command below — this is the recommended, most reliable path. It installs the dependencies (Git, Node LTS, Godot 4.6.3, Claude Code CLI) and downloads a prebuilt app, so a normal install needs no Visual Studio C++ Build Tools or Rust (those are only a source-build fallback). It clones the app to %LOCALAPPDATA%\BagIdeaOffice, brands the window icon, adds bagidea to your PATH, and creates a Start Menu shortcut. Safe to re-run — each step skips what's already done. No winget? It still works (Git and Node download directly).</p>
     <pre><code>irm https://raw.githubusercontent.com/bagidea/bagidea-office/main/installer/install.ps1 | iex</code></pre>
 
     <h3 id="install-mac" data-i18n="d_install_mac_h">macOS — one-shot installer (beta)</h3>
@@ -130,6 +127,10 @@
     <h3 id="install-linux" data-i18n="d_install_lin_h">Linux — one-shot installer (experimental 🧪)</h3>
     <p data-i18n="d_install_lin_p">Ubuntu/Debian (apt) for now. Open a terminal and run the command below. It installs the dependencies (Node 20, Rust, Git, WebKitGTK, GTK, wmctrl/xdotool, PulseAudio utils, Godot 4.6.3), builds the desktop shell, wires the Claude hooks, symlinks bagidea into ~/.local/bin, and adds an XDG autostart entry. On X11/Xorg the office attaches as the real desktop wallpaper; on Wayland it falls back to a fullscreen window pinned below everything. Please report problems with your distro, desktop, and the output of "echo $XDG_SESSION_TYPE".</p>
     <pre><code>curl -fsSL https://raw.githubusercontent.com/bagidea/bagidea-office/main/installer/install-linux.sh | bash</code></pre>
+
+    <h3 data-i18n="inst_npx_h">Prefer npm? (optional)</h3>
+    <p data-i18n="inst_npx_p">Already have Node? This is just a thin wrapper that runs the same one-shot installer for your platform — no need to run both.</p>
+    <pre><code>npx bagidea</code></pre>
 
     <h3 id="install-manual" data-i18n="d_install_manual_h">Manual build</h3>
     <p data-i18n="d_install_manual_p">Clone the repository, point the Claude hook paths at your clone, then build the Rust shell:</p>
