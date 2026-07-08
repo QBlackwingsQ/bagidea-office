@@ -4,6 +4,36 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [0.9.41] — The wallpaper stops vanishing; agents schedule timed work for real
+
+**Fixed**
+- **The wallpaper no longer disappears (Windows).** It kept vanishing "for no reason"
+  and never came back until a restart — the #1 recurring annoyance. Root cause, proven
+  with a live parent probe and a real Explorer restart: Windows destroys and recreates
+  the hidden `WorkerW` behind the desktop icons on ordinary events (changing or
+  slideshow-rotating the wallpaper, a resolution/DPI/monitor change, an Explorer or DWM
+  restart, lock screen / RDP / fast user-switch, exiting a fullscreen game). Our world
+  window sat inside that WorkerW's tree, so it was destroyed with it and Godot was left a
+  windowless zombie. The shell now runs a **world supervisor**: if the window loses its
+  desktop parent it re-embeds into a fresh WorkerW; if the window is destroyed it adopts
+  a new one or relaunches the world and re-pins it — automatically, within a couple of
+  seconds, no restart needed. It gates on *parent loss* (via `GetAncestor`), never on
+  visibility, so Win+D / display-sleep are left completely alone — the regression that
+  reverted the two earlier attempts can't recur. Crash-loop guarded.
+- **Agents now schedule "do it later" work through the office — and it actually runs.**
+  When the CEO asked for work "in an hour", "tomorrow 9am" or "every 30 minutes", it
+  quietly never happened: the scheduling skill taught the wrong request shape (so the
+  daemon rejected it with a 400) and agents fell back to session-bound timers that die
+  when the session closes. The skill now teaches the real `POST /jobs` schema (one-shot
+  at a time · daily at a clock time · every N minutes), ships in the builtin library for
+  everyone (it was previously never shipped), and is a default every teammate carries —
+  so timed and recurring work is booked in the office's own scheduler and fires for real.
+
+**Changed**
+- **The executive / CEO room stays the CEO's.** No other teammate gathers, plays, or
+  wanders into the exec room in the wallpaper world — it's reserved for the CEO and the
+  Main Agent (Director). Staff aimed at an exec spot are rerouted to the lobby.
+
 ## [0.9.40] — Install anywhere, always-current model lists, media that renders
 
 **Fixed**
